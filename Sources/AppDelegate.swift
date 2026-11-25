@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var isHandingOverToNewerCopy = false
     private var updateCheckInProgress = false
     private var updateCheckRequested = false
+    private var inputMonitoringGuide: InputMonitoringGuide?
 
     private var currentAppVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
@@ -23,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         if resolveDuplicateRunningCopies() { return }
+
+        // InputEngine records the stats day on launch, including in older builds.
+        let isFirstLaunch = UserDefaults.standard.object(forKey: "KuroCat.StatsDay") == nil
 
         overlayWindow = OverlayWindow()
         overlayWindow.orderFrontRegardless()
@@ -49,6 +53,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.overlayWindow.catView.physics.triggerMouseClick(button: button, isDown: isDown)
             }
         }
+        engine.onStatusChanged = { [weak self] status in
+            if status != .needsPermission {
+                self?.inputMonitoringGuide?.close()
+            }
+        }
         engine.start()
 
         setupStatusItem()
@@ -58,6 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         startRenderLoop()
         startWindowWatchdog()
+        if isFirstLaunch && engine.status == .needsPermission {
+            DispatchQueue.main.async { [weak self] in
+                self?.openInputMonitoringSettings()
+            }
+        }
         if !CommandLine.arguments.contains("--no-update-check") {
             checkForUpdates(manual: false)
         }
@@ -460,6 +474,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             if response != .alertSecondButtonReturn { return }
         }
+        if InputEngine.shared.status == .needsPermission {
+            inputMonitoringGuide?.close()
+            inputMonitoringGuide = InputMonitoringGuide(isEnglish: CatSettings.shared.isEnglish)
+        }
         InputEngine.shared.requestPermissionsAndOpenSettings()
     }
 
@@ -795,26 +813,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             ctx.setFillColor(NSColor.black.cgColor)
 
-            // Xiaohei V14 silhouette (ears + head) with the eye whites punched out, pupils kept.
+            // The light outline keeps the dark silhouette legible over dark menu bars.
             let svgBounds = CGRect(x: 77, y: 148, width: 486, height: 446)
             let k = 17.0 / svgBounds.width
             ctx.translateBy(x: 9, y: 9.4)
             ctx.scaleBy(x: k, y: k)
             ctx.translateBy(x: -svgBounds.midX, y: -svgBounds.midY)
+            let silhouette = CGMutablePath()
             for d in [XiaoheiArt.earLeftD, XiaoheiArt.earRightD, XiaoheiArt.headD] {
-                ctx.addPath(XiaoheiRenderer.parse(d))
+                silhouette.addPath(XiaoheiRenderer.parse(d))
             }
+            ctx.setStrokeColor(NSColor.white.cgColor)
+            ctx.setLineJoin(.round)
+            ctx.setLineWidth(1.2 / k)
+            ctx.addPath(silhouette)
+            ctx.strokePath()
+            ctx.addPath(silhouette)
             ctx.fillPath()
             let mirror = CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: 640, ty: 0)
             let right = XiaoheiArt.rightEyeTransform
             let both = [right, right.concatenating(mirror)]
-            ctx.setBlendMode(.clear)
+            ctx.setFillColor(NSColor.white.cgColor)
             for t in both {
                 var tt = t
                 if let w = XiaoheiRenderer.parse(XiaoheiArt.eyeWhiteD).copy(using: &tt) { ctx.addPath(w) }
             }
             ctx.fillPath()
-            ctx.setBlendMode(.normal)
+            ctx.setFillColor(NSColor.black.cgColor)
             for t in both {
                 var tt = t
                 if let pp = XiaoheiRenderer.parse(XiaoheiArt.pupilD).copy(using: &tt) { ctx.addPath(pp) }
@@ -822,7 +847,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ctx.fillPath()
             return true
         }
-        img.isTemplate = true
         return img
     }
 }

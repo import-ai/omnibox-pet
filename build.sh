@@ -26,6 +26,7 @@ SWIFT_SOURCES=(
     "$ROOT/Sources/XiaoheiArt.swift"
     "$ROOT/Sources/XiaoheiRenderer.swift"
     "$ROOT/Sources/OverlayWindow.swift"
+    "$ROOT/Sources/InputMonitoringGuide.swift"
     "$ROOT/Sources/AppDelegate.swift"
     "$ROOT/Sources/main.swift"
 )

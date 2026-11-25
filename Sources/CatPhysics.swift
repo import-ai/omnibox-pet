@@ -938,10 +938,13 @@ final class CatPhysics {
 
         // Compute normalized vector from cat head to real macOS screen cursor
         let scale = max(0.2, windowFrameInScreen.width / CatPhysics.canvasSize.width)
-        let headScreenX = windowFrameInScreen.minX + eyeOriginCanvas.x * scale
+        // Keyboard targets are already in canvas coordinates. Mirror only the screen cursor.
+        let flipped = CatSettings.shared.flipHorizontal
+        let headCanvasX = flipped ? CatPhysics.canvasSize.width - eyeOriginCanvas.x : eyeOriginCanvas.x
+        let headScreenX = windowFrameInScreen.minX + headCanvasX * scale
         let headScreenY = windowFrameInScreen.maxY - eyeOriginCanvas.y * scale
         let cursor = curMouseLoc
-        let curDx = (cursor.x - headScreenX) / 290.0
+        let curDx = (cursor.x - headScreenX) / (flipped ? -290.0 : 290.0)
         let curDy = -(cursor.y - headScreenY) / 260.0
         let curMag = hypot(curDx, curDy)
         let clampedCur = min(1.0, curMag)

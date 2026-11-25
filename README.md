@@ -1,6 +1,6 @@
 # 小黑桌宠（Xiaohei Pet）
 
-小黑 OmniBox 的 macOS 键盘桌宠。基于 [KuroCat](https://github.com/chanke17/kurocat)（MIT）改造：把原项目里的黑猫换成只有头部的小黑，保留全局键鼠监听、2.5D 转头、捕猎眼、摸头、打瞌睡等玩法。
+小黑 OmniBox 的 macOS 键盘桌宠。Fork 自 [chanke17/KuroCat](https://github.com/chanke17/KuroCat)（MIT）。把原项目里的黑猫换成只有头部的小黑，保留全局键鼠监听、2.5D 转头、捕猎眼、摸头、打瞌睡等玩法。
 
 ![小黑桌宠 12 种状态](docs/xiaohei-states.jpg)
 

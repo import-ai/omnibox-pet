@@ -11,9 +11,11 @@ open XiaoheiPet.app
 
 生成的 Universal 应用支持 arm64 和 x86_64，最低系统版本为 macOS 11。本地未配置稳定签名时使用 ad-hoc 签名，重新构建后可能需要重新授予输入监控权限。
 
+Windows x64 使用 Visual Studio 2022 的 C++ 桌面开发工具和 CMake。运行 `windows\build.bat`，产物位于 `windows/build/Release/XiaoheiPet.exe`。Windows 渲染器在配置阶段读取 `Sources/XiaoheiArt.swift` 的矢量路径，与 macOS 共用造型。
+
 ## CI 与发布
 
-GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS 应用，并上传 Universal ZIP 和状态预览图。PR 构建使用 ad-hoc 签名。`main` 和 `v*` 标签上的非 PR 构建使用 `import-ai` 组织级 Actions Secrets `CSC_LINK` 与 `CSC_KEY_PASSWORD`。在 Actions 设置里为仓库授权后，构建会从导入的证书中选取 Developer ID Application 签名身份。`v*` 标签构建要求稳定签名，成功后将 ZIP 附到对应的 GitHub Release。
+GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS Universal 和 Windows x64 应用，分别上传 ZIP。macOS 任务也上传状态预览图。PR 构建使用 ad-hoc 签名。`main` 和 `v*` 标签上的非 PR 构建使用 `import-ai` 组织级 Actions Secrets `CSC_LINK` 与 `CSC_KEY_PASSWORD`。在 Actions 设置里为仓库授权后，构建会从导入的证书中选取 Developer ID Application 签名身份。`v*` 标签构建要求稳定签名，两个平台都构建成功后，将 ZIP 附到对应的 GitHub Release。
 
 ## 生成角色素材
 
@@ -56,7 +58,7 @@ GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时�
 
 - Bundle ID 为 `pro.omnibox.xiaohei-pet`，开机自启的 LaunchAgent 同名，和 KuroCat 互不影响。
 - 关闭了上游的自动更新检查和应用内自更新（否则会下载 KuroCat 覆盖本应用），移除了皮肤导入的拖放入口。
-- 只改了 macOS（`Sources/`）。`windows/`、`linux/` 仍是上游的猫，CI 只构建和发布 macOS 版 `XiaoheiPet.app`，不再编译这两个目录。
+- macOS（`Sources/`）与 Windows（`windows/`）的应用统一使用小黑。`linux/` 保留上游实现，不参与桌宠发布。
 - 上游说明保留在 [README.kurocat.md](README.kurocat.md)、[README.kurocat.en.md](README.kurocat.en.md)，许可证见 [LICENSE](LICENSE)。
 
 ## 视觉检查

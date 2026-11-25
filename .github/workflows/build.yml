@@ -1,4 +1,4 @@
-name: Build KuroCat (macOS, Windows & Linux/UOS)
+name: Build Xiaohei Pet (macOS)
 
 on:
   push:
@@ -12,30 +12,6 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup MSVC Developer Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Build standalone KuroCat.exe
-        shell: cmd
-        run: |
-          cd windows
-          call build.bat
-          dir KuroCat.exe
-
-      - name: Upload Windows binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: KuroCat-Windows-x64
-          path: windows/KuroCat.exe
-
   build-macos:
     runs-on: macos-latest
     steps:
@@ -43,12 +19,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Check coat artwork and native action regressions
-        run: bash scripts/check-skins.sh
-
-      - name: Check covered eye pixels
-        run: bash scripts/check-eye-closure.sh
 
       # macOS remembers Input Monitoring permission by code signature. Signing every release with the
       # same certificate (created once by scripts/create-macos-signing-cert.sh) keeps the permission
@@ -62,106 +32,49 @@ jobs:
             echo "::warning::MACOS_SIGN_P12_BASE64 secret is not set: this macOS build is ad-hoc signed and users must re-enable Input Monitoring after updating."
             exit 0
           fi
-          KC="$RUNNER_TEMP/kurocat-sign.keychain-db"
+          KC="$RUNNER_TEMP/xiaohei-sign.keychain-db"
           KC_PW="$(uuidgen)"
           security create-keychain -p "$KC_PW" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KC_PW" "$KC"
-          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/kurocat-signing.p12"
-          security import "$RUNNER_TEMP/kurocat-signing.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/xiaohei-signing.p12"
+          security import "$RUNNER_TEMP/xiaohei-signing.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PW" "$KC"
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
-          rm -f "$RUNNER_TEMP/kurocat-signing.p12"
-          echo "KUROCAT_SIGN_IDENTITY=KuroCat Code Signing" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/xiaohei-signing.p12"
+          echo "XIAOHEI_SIGN_IDENTITY=KuroCat Code Signing" >> "$GITHUB_ENV"
 
-      - name: Build Universal KuroCat.app (Apple Silicon + Intel)
+      - name: Build Universal XiaoheiPet.app (Apple Silicon + Intel)
         run: |
           chmod +x build.sh
           ./build.sh
-          ditto -c -k --sequesterRsrc --keepParent KuroCat.app KuroCat-macOS-universal.zip
-          ls -lh KuroCat-macOS-universal.zip
+          ditto -c -k --sequesterRsrc --keepParent XiaoheiPet.app XiaoheiPet-macOS-universal.zip
+          ls -lh XiaoheiPet-macOS-universal.zip
+
+      - name: Render Xiaohei state sheet
+        run: ./XiaoheiPet.app/Contents/MacOS/XiaoheiPet --render-xiaohei-preview xiaohei-states.png
 
       - name: Upload macOS universal app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KuroCat-macOS-universal
-          path: KuroCat-macOS-universal.zip
-
-  build-linux:
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            arch: amd64
-            tar_arch: x86_64
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tar_arch: arm64
-    runs-on: ${{ matrix.runner }}
-    # Build inside Debian 10 "buster" (glibc 2.28, GTK 3.24, GCC 8). The previous Ubuntu 22.04
-    # image produced binaries needing glibc 2.34+, which 统信 UOS 20 (glibc 2.28) and 银河麒麟 V10
-    # (glibc 2.31) cannot run — on Kylin that showed up as "installation always fails".
-    # The container is started with `docker run` (not `container:`) so actions/checkout's Node
-    # runtime never has to run on the old glibc.
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build KuroCat Linux binary, .deb and .tar.gz in Debian 10 (glibc 2.28)
-        shell: bash
-        run: |
-          DEB_VER="${GITHUB_REF_NAME#v}"
-          if [[ ! "$DEB_VER" =~ ^[0-9]+\.[0-9]+ ]]; then DEB_VER="1.2.0"; fi
-          docker run --rm -v "$PWD":/src -w /src \
-            -e DEB_VER="$DEB_VER" -e TAR_ARCH="${{ matrix.tar_arch }}" -e KUROCAT_MAX_GLIBC=2.28 \
-            debian:buster bash -euo pipefail -c '
-              # buster is archived: point apt at archive.debian.org
-              sed -i -e "s|deb.debian.org|archive.debian.org|g" \
-                     -e "s|security.debian.org|archive.debian.org|g" \
-                     -e "/buster-updates/d" /etc/apt/sources.list
-              apt-get -o Acquire::Check-Valid-Until=false update -qq
-              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-                g++ pkg-config libgtk-3-dev libcairo2-dev libx11-dev libxi-dev dpkg-dev binutils
-              cd linux
-              chmod +x build.sh build_deb.sh install.sh uninstall.sh
-              ./build.sh
-              ./build_deb.sh "$DEB_VER"
-              tar -czf "KuroCat-Linux-${TAR_ARCH}.tar.gz" \
-                kurocat kurocat.desktop kurocat.svg install.sh uninstall.sh 安装说明.txt
-            '
-          sudo chown -R "$(id -u):$(id -g)" linux
-          ls -lh "linux/KuroCat-Linux-${{ matrix.arch }}.deb" "linux/KuroCat-Linux-${{ matrix.tar_arch }}.tar.gz"
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: KuroCat-Linux-${{ matrix.arch }}
+          name: XiaoheiPet-macOS-universal
           path: |
-            linux/KuroCat-Linux-${{ matrix.arch }}.deb
-            linux/KuroCat-Linux-${{ matrix.tar_arch }}.tar.gz
+            XiaoheiPet-macOS-universal.zip
+            xiaohei-states.png
 
   release:
-    needs: [ build-windows, build-macos, build-linux ]
+    needs: [ build-macos ]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
+      - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
+          name: XiaoheiPet-macOS-universal
           path: dist
-          merge-multiple: true
-
-      - name: Rename Windows binary
-        run: mv dist/KuroCat.exe dist/KuroCat-Windows-x64.exe
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: |
-            dist/KuroCat-macOS-universal.zip
-            dist/KuroCat-Windows-x64.exe
-            dist/KuroCat-Linux-amd64.deb
-            dist/KuroCat-Linux-x86_64.tar.gz
-            dist/KuroCat-Linux-arm64.deb
-            dist/KuroCat-Linux-arm64.tar.gz
+          files: dist/XiaoheiPet-macOS-universal.zip

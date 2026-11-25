@@ -16,7 +16,7 @@ mkdir -p "$MACOS_DIR" "$RES_DIR"
 
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 
-cp "$ROOT/Resources/AppIcon.icns" "$RES_DIR/AppIcon.icns"
+cp "$ROOT/Resources/AppIcon.icns" "$ROOT/Resources/AppIcon.png" "$RES_DIR/"
 
 SWIFT_SOURCES=(
     "$ROOT/Sources/KeyMap.swift"
@@ -26,6 +26,7 @@ SWIFT_SOURCES=(
     "$ROOT/Sources/XiaoheiArt.swift"
     "$ROOT/Sources/XiaoheiRenderer.swift"
     "$ROOT/Sources/OverlayWindow.swift"
+    "$ROOT/Sources/InputMonitoringGuide.swift"
     "$ROOT/Sources/AppDelegate.swift"
     "$ROOT/Sources/main.swift"
 )

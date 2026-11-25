@@ -9,26 +9,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parent.parent
 RESOURCES = ROOT / "Resources"
-
-
-def make_icon(avatar: Image.Image) -> Image.Image:
-    size = 1024
-    padding = round(size * 0.055)
-    artwork = avatar.resize((size - 2 * padding,) * 2, Image.Resampling.LANCZOS)
-    mask = Image.new("L", artwork.size)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, artwork.width - 1, artwork.height - 1),
-        radius=round(size * 0.225),
-        fill=255,
-    )
-    icon = Image.new("RGBA", (size, size))
-    icon.paste(artwork, (padding, padding), mask)
-    return icon
 
 
 def main() -> None:
@@ -38,7 +23,7 @@ def main() -> None:
     with Image.open(args.avatar) as avatar:
         if avatar.width != avatar.height:
             parser.error("the source avatar must be square")
-        icon = make_icon(avatar.convert("RGBA"))
+        icon = avatar.convert("RGBA")
 
     with tempfile.TemporaryDirectory() as tmp:
         iconset = Path(tmp) / "AppIcon.iconset"
@@ -55,7 +40,9 @@ def main() -> None:
         )
 
     sizes = (16, 20, 24, 32, 40, 48, 64, 128, 256)
-    icon.save(RESOURCES / "AppIcon.ico", sizes=[(size, size) for size in sizes])
+    icon.resize((256, 256), Image.Resampling.LANCZOS).save(
+        RESOURCES / "AppIcon.ico", sizes=[(size, size) for size in sizes]
+    )
 
 
 if __name__ == "__main__":

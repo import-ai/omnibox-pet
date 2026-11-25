@@ -179,15 +179,26 @@ inline void drawEye(Graphics& g, const EyeArt& eye, const CatPhysics& p, float s
     g.SetClip(&eye.white, CombineModeIntersect);
     const float closure = p.effectiveEyeClosure();
     const bool happy = p.isHappyClosedEyes();
-    if (closure > 0.86f || happy) {
+    const bool squeezed = p.scruffDrag.value > 0.35f;
+    if (squeezed || closure > 0.86f || happy) {
         Pen closed(ink, 18.0f);
         closed.SetStartCap(LineCapRound);
         closed.SetEndCap(LineCapRound);
-        const float halfWidth = radius * (happy ? 0.62f : 0.52f);
-        const float lineY = y + radius * (happy ? 0.22f : 0.48f);
-        const float bend = radius * (happy ? -0.77f : 0.32f) * (2.0f / 3.0f);
-        g.DrawBezier(&closed, PointF(x - halfWidth, lineY), PointF(x - halfWidth / 3.0f, lineY + bend),
-                     PointF(x + halfWidth / 3.0f, lineY + bend), PointF(x + halfWidth, lineY));
+        if (squeezed) {
+            const PointF points[] = {
+                {x + side * 0.45f * radius, y - 0.42f * radius},
+                {x - side * 0.42f * radius, y},
+                {x + side * 0.45f * radius, y + 0.42f * radius}
+            };
+            closed.SetLineJoin(LineJoinRound);
+            g.DrawLines(&closed, points, 3);
+        } else {
+            const float halfWidth = radius * (happy ? 0.62f : 0.52f);
+            const float lineY = y + radius * (happy ? 0.22f : 0.48f);
+            const float bend = radius * (happy ? -0.77f : 0.32f) * (2.0f / 3.0f);
+            g.DrawBezier(&closed, PointF(x - halfWidth, lineY), PointF(x - halfWidth / 3.0f, lineY + bend),
+                         PointF(x + halfWidth / 3.0f, lineY + bend), PointF(x + halfWidth, lineY));
+        }
     } else {
         const float pupilScale = std::clamp(p.pupilScale.value, 0.8f, 1.3f) * (1.0f + hunt * 0.30f);
         const float pupilRadius = (pupilBounds.Width + pupilBounds.Height) * 0.25f;
@@ -205,7 +216,7 @@ inline void drawEye(Graphics& g, const EyeArt& eye, const CatPhysics& p, float s
     }
     const float anger = clampUnit((p.angerIntensity.value - 0.15f) / 0.6f);
     const float lid = std::max(closure, anger * 0.42f);
-    if (!happy && lid > 0.01f) {
+    if (!squeezed && !happy && lid > 0.01f) {
         const float edge = whiteBounds.Y + std::min(lid, 0.64f) * whiteBounds.Height;
         const float left = whiteBounds.X, right = whiteBounds.GetRight();
         const float inner = edge + anger * 0.20f * radius, outer = edge - anger * 0.08f * radius;

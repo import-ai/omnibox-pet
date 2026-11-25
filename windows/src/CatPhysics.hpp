@@ -631,11 +631,11 @@ public:
         }
 
         if (scruff > 0.25f) {
-            float sway = scruffSwing.value * 28.0f;
-            float kick = std::sin(time * 9.0f) * 3.5f * scruff;
-            leftPaw.setTarget({ SeatAnchor.x - 16.0f + sway, 198.0f + kick });
-            rightPaw.setTarget({ SeatAnchor.x + 16.0f + sway, 200.0f - kick });
-            hindFoot.setTarget({ SeatAnchor.x + 12.0f + sway * 1.2f, 224.0f });
+            // The head lifts away while the detached paws stay over the far row.
+            const float sway = scruffSwing.value * 0.15f;
+            leftPaw.setTarget(KeyboardLayout::screenQuadPoint(0.34f + sway, 0.13f));
+            rightPaw.setTarget(KeyboardLayout::screenQuadPoint(0.53f + sway, 0.13f));
+            hindFoot.setTarget(HindFootRest);
             hindFootActive.target = 0.0f;
             leftPawTyping = false;
             rightPawTyping = false;

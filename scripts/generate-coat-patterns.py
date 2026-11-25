@@ -127,10 +127,10 @@ PALETTES={
           'legs':POINT,'paws':POINT,'earOuter':POINT,'tail':POINT,'earInner':hx(.365,.275,.228),'outline':hx(.68,.59,.50,.42),
           'crease':hx(.553,.471,.404,.54),'whiskers':hx(.478,.388,.325,.62),'nose':hx(.14,.09,.08,.95),'mouth':hx(.78,.66,.56,.55)},
           {'build':'sleek'},'dome',None),
- 'shorthair':('美短（银虎斑加白）',{'body':hexrgb(0xC2C5C1),'legs':hexrgb(0xC2C5C1),'earOuter':hexrgb(0xC2C5C1),'tail':hexrgb(0xC2C5C1),
+ 'shorthair':('美短（银虎斑加白）',{'body':hexrgb(0xC2C5C1),'legs':hexrgb(MILK),'earOuter':hexrgb(0xC2C5C1),'tail':hexrgb(0xC2C5C1),
           'belly':hexrgb(MILK),'paws':hexrgb(MILK),'stripes':hexrgb(0x55595A),'whiskers':LIGHT_WHISKER,'crease':LIGHT_CREASE},
           {'build':'standard','pawStagger':0},'plane',0x55595A),
- 'orangeWhite':('橘白猫',{'body':hexrgb(MILK),'legs':hexrgb(GINGER),'earOuter':hexrgb(GINGER),'tail':hexrgb(GINGER),
+ 'orangeWhite':('橘白猫',{'body':hexrgb(MILK),'legs':hexrgb(MILK),'earOuter':hexrgb(GINGER),'tail':hexrgb(GINGER),
           'belly':hexrgb(MILK),'paws':hexrgb(MILK),'stripes':hexrgb(0xA57543),'whiskers':LIGHT_WHISKER,'crease':LIGHT_CREASE},
           {'build':'standard','pawStagger':0},'dome',0xA57543),
 }

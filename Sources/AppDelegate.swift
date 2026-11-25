@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 || input.leftMouseDown || input.rightMouseDown || input.otherMouseDown || view.isDraggingOrResizing
                 || !physics.keyGlow.isEmpty || !physics.floatingKeycaps.isEmpty
                 || physics.petHeadIntensity > 0.02 || physics.huntIntensity.value > 0.02
-                || physics.scruffDrag.value > 0.02 || physics.lieIntensity.value > 0.02
+                || physics.scruffDrag.value > 0.02 || physics.isChangingLie
                 || physics.angerIntensity.value > 0.02 || physics.dizzyIntensity.value > 0.02
                 || wasYawning || physics.isYawning || (!isAsleep && (wasBlinking || physics.isBlinking))
             let ticksPerRedraw = isActive ? 1 : (isAsleep ? 3 : 2) // 60, 20, or 30 FPS on a 60 Hz tick.

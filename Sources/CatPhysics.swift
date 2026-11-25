@@ -261,6 +261,10 @@ final class CatPhysics {
     var lieIntensity = Spring1D(0)   // 0 = sitting, 1 = lying cozily on keyboard while idle
     var angerIntensity = Spring1D(0) // 0 = calm, 1 = angry from very fast typing
     var dizzyIntensity = Spring1D(0) // 0 = clear, 1 = dizzy spiral eyes + slumped beside keyboard
+    /// True while Xiaohei lies down or sits up; lying still (asleep) is not changing.
+    var isChangingLie: Bool {
+        abs(lieIntensity.target - lieIntensity.value) > 0.02 || abs(lieIntensity.velocity) > 0.02
+    }
     private(set) var dizzyPhase: CGFloat = 0
     private var isScruffDragging = false
     private var scruffDragDx: CGFloat = 0

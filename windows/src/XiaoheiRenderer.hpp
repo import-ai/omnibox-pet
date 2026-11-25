@@ -14,7 +14,12 @@ inline constexpr float HeadScale = 0.30f;
 inline constexpr float HeadPivotX = 320.0f;
 inline constexpr float HeadPivotY = 413.0f;
 inline constexpr float HeadChinY = 594.0f;
+// The SVG head outline and its sticker rim fit inside this radius, excluding the ears.
+inline constexpr float HeadRadius = 248.0f + 7.5f;
 inline constexpr float RadToDeg = 57.2957795f;
+
+inline const Pt keyboardLeft = KeyboardLayout::screenQuadPoint(-0.012f, -0.04f);
+inline const Pt keyboardRight = KeyboardLayout::screenQuadPoint(1.012f, -0.04f);
 
 // The shared artwork uses absolute M, L, C and Z path commands.
 inline void addSvgPath(GraphicsPath& path, const char* data) {
@@ -63,9 +68,7 @@ struct EyeArt {
 };
 
 inline float keyboardEdge(float x) {
-    const Pt left = KeyboardLayout::screenQuadPoint(-0.012f, -0.04f);
-    const Pt right = KeyboardLayout::screenQuadPoint(1.012f, -0.04f);
-    return left.y + (right.y - left.y) * (x - left.x) / (right.x - left.x);
+    return keyboardLeft.y + (keyboardRight.y - keyboardLeft.y) * (x - keyboardLeft.x) / (keyboardRight.x - keyboardLeft.x);
 }
 
 inline float clampUnit(float value) {
@@ -77,7 +80,22 @@ inline float smoothUnit(float value) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-inline Pt headCenter(const CatPhysics& p, bool showPaws = true) {
+inline float headRotation(const CatPhysics& p, Pt center) {
+    const float dizzy = clampUnit(p.dizzyIntensity.value);
+    const float fall = smoothUnit((dizzy - 0.5f) / 0.5f);
+    const float wobble = clampUnit((dizzy - 0.12f) / 0.38f) * (1.0f - fall);
+    const float bonkDirection = p.hindFoot.x.value >= center.x ? 1.0f : -1.0f;
+    return p.headTilt.value + p.bodyTilt.value * 0.5f - smoothUnit(p.lieIntensity.value) * 0.12f
+        + p.scruffSwing.value * 0.6f + clampUnit(p.hindFootActive.value) * 0.12f * bonkDirection
+        + std::sin(p.time * 9.5f) * 0.16f * wobble - fall * 0.30f;
+}
+
+struct HeadPose {
+    Pt center;
+    float rotation, sx, sy;
+};
+
+inline HeadPose headPose(const CatPhysics& p, bool showPaws) {
     const float x = CatPhysics::SeatAnchor.x + p.bodyShiftX.value + p.bodyTilt.value * 30.0f + p.headYaw.value * 4.0f;
     float y = 208.0f + p.headOffsetY.value * 0.8f + p.headPitch.value * 3.0f + std::sin(p.time * 2.1f) * (1.6f * 1.4f)
         + clampUnit(p.huntIntensity.value) * 5.0f + p.sleepiness * 6.0f + smoothUnit(p.lieIntensity.value) * 8.0f
@@ -88,17 +106,24 @@ inline Pt headCenter(const CatPhysics& p, bool showPaws = true) {
         if (!p.leftPawOnMouse) keyDistance = std::max(keyDistance, p.leftPaw.y.value - CatPhysics::LeftPawRest.y);
         y += std::clamp(keyDistance * 0.25f, 0.0f, 8.0f);
     }
-    return {x, y};
+    const float rotation = headRotation(p, {x, y});
+    const float squash = 1.0f - p.bodySquash.value;
+    const float sx = 1.0f + squash * 0.25f, sy = 1.0f - squash * 0.45f;
+    const float cosRoll = std::cos(rotation), sinRoll = std::sin(rotation);
+    const float yaw = std::clamp(p.headYaw.value, -1.0f, 1.0f);
+    // Keep the posed outline behind the keyboard's actual far corners, even during a lean.
+    const float yawShift = yaw * 8.0f * HeadScale * sx;
+    const float chinOffset = (HeadChinY - HeadPivotY) * HeadScale * (1.0f - sy);
+    const float outlineOffset = yawShift * cosRoll - chinOffset * sinRoll;
+    const float halfWidth = HeadRadius * HeadScale * std::hypot(sx * cosRoll, sy * sinRoll);
+    const float deckCenter = (keyboardLeft.x + keyboardRight.x) * 0.5f;
+    const float room = std::max(0.0f, (keyboardRight.x - keyboardLeft.x) * 0.5f - halfWidth);
+    const float outlineX = std::clamp(x + outlineOffset, deckCenter - room, deckCenter + room);
+    return {{outlineX - outlineOffset, y}, rotation, sx, sy};
 }
 
-inline float headRotation(const CatPhysics& p, Pt center) {
-    const float dizzy = clampUnit(p.dizzyIntensity.value);
-    const float fall = smoothUnit((dizzy - 0.5f) / 0.5f);
-    const float wobble = clampUnit((dizzy - 0.12f) / 0.38f) * (1.0f - fall);
-    const float bonkDirection = p.hindFoot.x.value >= center.x ? 1.0f : -1.0f;
-    return p.headTilt.value + p.bodyTilt.value * 0.5f - smoothUnit(p.lieIntensity.value) * 0.12f
-        + p.scruffSwing.value * 0.6f + clampUnit(p.hindFootActive.value) * 0.12f * bonkDirection
-        + std::sin(p.time * 9.5f) * 0.16f * wobble - fall * 0.30f;
+inline Pt headCenter(const CatPhysics& p, bool showPaws = true) {
+    return headPose(p, showPaws).center;
 }
 
 inline void poseEar(GraphicsPath& ear, const char* path, float side, float yaw, float pitch, float headShiftX,
@@ -222,12 +247,11 @@ inline void drawHead(Graphics& g, const CatPhysics& p, bool showPaws) {
     GraphicsPath visibleHead;
     visibleHead.AddPolygon(points, 4);
     g.SetClip(&visibleHead, CombineModeIntersect);
-    const Pt center = headCenter(p, showPaws);
-    const float squash = 1.0f - p.bodySquash.value;
+    const auto [center, rotation, sx, sy] = headPose(p, showPaws);
     g.TranslateTransform(center.x, center.y);
-    g.RotateTransform(headRotation(p, center) * RadToDeg);
+    g.RotateTransform(rotation * RadToDeg);
     g.TranslateTransform(0.0f, (HeadChinY - HeadPivotY) * HeadScale);
-    g.ScaleTransform(HeadScale * (1.0f + squash * 0.25f), HeadScale * (1.0f - squash * 0.45f));
+    g.ScaleTransform(HeadScale * sx, HeadScale * sy);
     g.TranslateTransform(-HeadPivotX, -HeadChinY);
 
     const float yaw = std::clamp(p.headYaw.value, -1.0f, 1.0f);

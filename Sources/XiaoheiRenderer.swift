@@ -21,6 +21,8 @@ enum XiaoheiRenderer {
     /// Head pivot in SVG space (horizontal centre, vertical centre of the head without ears).
     private static let svgPivot = CGPoint(x: 320, y: 413)
     private static let svgChinY: CGFloat = 594
+    /// A radius in SVG units enclosing the head outline and its sticker rim, excluding the ears.
+    private static let headRadius: CGFloat = 248 + 7.5
     /// Canvas Y of the head pivot at rest: the eyes sit just above the keyboard, the chin hides behind it.
     private static let restHeadY: CGFloat = 208
     /// Lift of the dizzy stars above the head pivot.
@@ -81,6 +83,10 @@ enum XiaoheiRenderer {
 
     /// World (canvas) position of the head pivot. Shared by drawing, hit testing and overlay effects.
     static func headCenter(_ p: CatPhysics, showPaws: Bool) -> CGPoint {
+        headPose(p, showPaws: showPaws).center
+    }
+
+    private static func headPose(_ p: CatPhysics, showPaws: Bool) -> (center: CGPoint, rotation: CGFloat, sx: CGFloat, sy: CGFloat) {
         let scruff = clamp01(p.scruffDrag.value)
         let lie = smooth(p.lieIntensity.value)
         let hunt = clamp01(p.huntIntensity.value)
@@ -100,7 +106,22 @@ enum XiaoheiRenderer {
             if !p.leftPawOnMouse { dy = max(dy, p.leftPaw.point.y - CatPhysics.leftPawRest.y) }
             y += min(8, max(0, dy) * 0.25)
         }
-        return CGPoint(x: x, y: y)
+        let rawCenter = CGPoint(x: x, y: y)
+        let rotation = headRotation(p, center: rawCenter)
+        let squash = 1 - p.bodySquash.value
+        let sx = 1 + squash * 0.25
+        let sy = 1 - squash * 0.45
+        let cosRoll = cos(rotation), sinRoll = sin(rotation)
+        let yaw = max(-1, min(1, p.headYaw.value))
+        // Keep the posed outline behind the keyboard's actual far corners, even during a lean.
+        let yawShift = yaw * 8 * k * sx
+        let chinOffset = (svgChinY - svgPivot.y) * k * (1 - sy)
+        let outlineOffset = yawShift * cosRoll - chinOffset * sinRoll
+        let halfWidth = headRadius * k * hypot(sx * cosRoll, sy * sinRoll)
+        let deckCenter = (kbEdgeLeft.x + kbEdgeRight.x) / 2
+        let room = max(0, (kbEdgeRight.x - kbEdgeLeft.x) / 2 - halfWidth)
+        let outlineX = max(deckCenter - room, min(deckCenter + room, x + outlineOffset))
+        return (CGPoint(x: outlineX - outlineOffset, y: y), rotation, sx, sy)
     }
 
     private static func headRotation(_ p: CatPhysics, center: CGPoint) -> CGFloat {
@@ -131,7 +152,7 @@ enum XiaoheiRenderer {
 
     /// Head only, clipped at the keyboard's far edge; the keyboard drawn afterwards sits in front of it.
     static func drawHead(in ctx: CGContext, physics p: CatPhysics, showPaws: Bool) {
-        let center = headCenter(p, showPaws: showPaws)
+        let (center, rotation, sx, sy) = headPose(p, showPaws: showPaws)
 
         ctx.saveGState()
         let w = CatPhysics.canvasSize.width
@@ -143,11 +164,8 @@ enum XiaoheiRenderer {
         visible.closeSubpath()
         ctx.addPath(visible)
         ctx.clip()
-        let sq = p.bodySquash.value
-        let sx = 1 + (1 - sq) * 0.25
-        let sy = 1 - (1 - sq) * 0.45
         ctx.translateBy(x: center.x, y: center.y)
-        ctx.rotate(by: headRotation(p, center: center))
+        ctx.rotate(by: rotation)
         // Squash and stretch around the chin so typing bounces stay grounded.
         let chin = (svgChinY - svgPivot.y) * k
         ctx.translateBy(x: 0, y: chin)

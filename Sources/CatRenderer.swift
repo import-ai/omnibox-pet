@@ -94,25 +94,8 @@ enum CatRenderer {
             return .permissionPill
         }
 
-        let skin = CatSettings.shared.activeSkin
-        let shape = skin.shape
-        let cx = CatPhysics.seatAnchor.x + physics.bodyShiftX.value
-        let breath = physics.breathingOffset
-        let headLift: CGFloat = build(skin).headLift
-        let headCenter = CGPoint(x: cx + physics.bodyTilt.value * 42, y: 124 + headLift + physics.headOffsetY.value + breath)
-
-        // Head hit ellipse (strictly on the cat's head — never overlaps keyboard); follows head size + cheeks.
-        let hdx = (p.x - headCenter.x) / (44.0 * shape.headScale * shape.cheekFullness)
-        let hdy = (p.y - headCenter.y) / (38.0 * shape.headScale)
-        if hdx * hdx + hdy * hdy <= 1.0 {
+        if XiaoheiRenderer.hitTestHead(point: p, physics: physics, showPaws: CatSettings.shared.xiaoheiPaws) {
             return .head
-        }
-
-        // Torso + keyboard area hit check (follows body width)
-        let bdx = (p.x - cx) / (58.0 * shape.bodyWidth)
-        let bdy = (p.y - 196.0) / 56.0
-        if bdx * bdx + bdy * bdy <= 1.0 {
-            return .body
         }
 
         // Mini keyboard & mouse area (allows dragging by grabbing keyboard too)
@@ -143,7 +126,6 @@ enum CatRenderer {
             ctx.scaleBy(x: -1, y: 1)
         }
         let skin = settings.activeSkin
-        let breath = physics.breathingOffset
         let scruff = max(0, min(1, physics.scruffDrag.value))
         let lie = max(0, min(1, physics.lieIntensity.value))
         let dizzy = max(0, min(1, physics.dizzyIntensity.value))
@@ -174,9 +156,7 @@ enum CatRenderer {
         let fallShiftX: CGFloat = dizzyFall * 56.0
         let fallShiftY: CGFloat = dizzyFall * 20.0
         let baseHead = headPosition(physics, skin: skin)
-        let localHeadCenter = CGPoint(x: baseHead.x - lieS * 4.0, y: baseHead.y + lieS * 60.0)
-        let drawBlackRim = isClassicBlackRim(skin)
-        let tailInFront = (physics.tailTyping.value >= 0.5) || (lieS >= 0.45)
+        let localHeadCenter = baseHead
 
         ctx.saveGState()
         if dizzy > 0.01 {
@@ -185,66 +165,12 @@ enum CatRenderer {
             ctx.translateBy(x: -seatX, y: -seatY)
         }
 
-        // Pass 1: crisp outer white outline for Classic Black Cat so it pops cleanly on dark backgrounds with zero internal seams
-        if drawBlackRim {
-            if !tailInFront {
-                drawTail(in: ctx, seatX: seatX, seatY: seatY, physics: physics, skin: skin, outlineOnly: true)
-            }
-            drawEarsLayer(in: ctx, center: localHeadCenter, physics: physics, skin: skin, outlineOnly: true)
-            drawUnifiedSilhouette(
-                in: ctx,
-                seatX: seatX,
-                seatY: seatY,
-                headCenter: localHeadCenter,
-                breath: breath,
-                physics: physics,
-                skin: skin,
-                outlineOnly: true
-            )
-        }
+        // Xiaohei (head-only) replaces the cat silhouette, tail, limbs and face features.
+        XiaoheiRenderer.draw(in: ctx, physics: physics, showPaws: settings.xiaoheiPaws)
 
-        if !tailInFront {
-            drawTail(in: ctx, seatX: seatX, seatY: seatY, physics: physics, skin: skin)
-        }
-
-        // 4. 3D-Projected Ears (behind crown silhouette so seal-point ears emerge cleanly from cream skull!)
-        drawEarsLayer(in: ctx, center: localHeadCenter, physics: physics, skin: skin)
-
-        // 5. Unified C1-Continuous Head + Neck + Pear Torso Silhouette (+ regions, colour-point mask, marks)
-        drawUnifiedSilhouette(
-            in: ctx,
-            seatX: seatX,
-            seatY: seatY,
-            headCenter: localHeadCenter,
-            breath: breath,
-            physics: physics,
-            skin: skin
-        )
-
-        // 6. Hind Foot (3rd simultaneous key easter egg!)
-        if physics.hindFootActive.value > 0.03 {
-            drawHindFoot(in: ctx, seatX: seatX, seatY: seatY, physics: physics, skin: skin)
-        }
-
-        // 7. 2.5D Turning Head Features: Luminous Eyes & Whiskers (+ optional nose/mouth)
-        drawHeadFeatures(in: ctx, center: localHeadCenter, physics: physics, eyeTheme: settings.eyeTheme, skin: skin)
-
-        // 7b. Skin stickers anchored to head / neck / tail tip
-        if !skin.decorations.isEmpty {
-            drawDecorations(in: ctx, seatX: seatX, seatY: seatY, head: localHeadCenter, physics: physics, skin: skin)
-        }
-
-        // 8. Front Arms / Paws (over torso & keyboard/mouse with crisp separation outlines / colour-point socks!)
-        drawFrontPaws(in: ctx, seatX: seatX, seatY: seatY, breath: breath, physics: physics, skin: skin)
-
-        // 8b. Held Stylus gripped cleanly in the cat's paw when drawing on the graphics tablet!
-        if physics.isTabletActive && physics.leftPawOnMouse && scruff <= 0.25 && dizzy <= 0.35 && lie <= 0.45 {
+        // Held Stylus in Xiaohei's floating paw when drawing on the graphics tablet.
+        if settings.xiaoheiPaws && physics.isTabletActive && physics.leftPawOnMouse && scruff <= 0.25 && dizzy <= 0.35 && lie <= 0.45 {
             drawHeldStylus(in: ctx, physics: physics, theme: settings.keyboardTheme, eyeTheme: settings.eyeTheme)
-        }
-
-        if tailInFront {
-            if drawBlackRim { drawTail(in: ctx, seatX: seatX, seatY: seatY, physics: physics, skin: skin, outlineOnly: true) }
-            drawTail(in: ctx, seatX: seatX, seatY: seatY, physics: physics, skin: skin)
         }
 
         ctx.restoreGState()
@@ -256,7 +182,7 @@ enum CatRenderer {
             let worldHeadX = seatX + fallShiftX + relX * cos(fallAngle) - relY * sin(fallAngle)
             let worldHeadY = seatY + fallShiftY + relX * sin(fallAngle) + relY * cos(fallAngle)
             let dAlpha = min(1.0, (dizzy - 0.10) / 0.22)
-            let starLift: CGFloat = 42.0 + dizzyFall * 10.0
+            let starLift: CGFloat = 76.0 + dizzyFall * 10.0
             ctx.saveGState()
             ctx.translateBy(x: worldHeadX, y: worldHeadY - starLift)
             for i in 0..<3 {
@@ -386,12 +312,7 @@ enum CatRenderer {
     }
 
     static func headPosition(_ physics: CatPhysics, skin: SkinSpec) -> CGPoint {
-        let headLift: CGFloat = build(skin).headLift
-        let scruff = max(0, min(1, physics.scruffDrag.value))
-        return CGPoint(
-            x: CatPhysics.seatAnchor.x + physics.bodyShiftX.value + physics.bodyTilt.value * 36 + physics.headYaw.value * 7.5,
-            y: 126 + headLift + physics.headOffsetY.value + physics.headPitch.value * 4.8 + physics.breathingOffset * 1.1 - scruff * 22.0
-        )
+        XiaoheiRenderer.headCenter(physics, showPaws: CatSettings.shared.xiaoheiPaws)
     }
 
     // MARK: - Mini White Mouse

@@ -169,7 +169,6 @@ final class CatCanvasView: NSView {
             : pt
         let showPill = InputEngine.shared.status.needsAttention
         let zone = CatRenderer.hitTest(point: catPt, physics: physics, showPermissionPill: showPill)
-        physics.updateTailHover(canvasPoint: catPt)
 
         // Petting triggers strictly on the cat's head (never on keyboard or torso)!
         if zone == .head {
@@ -388,7 +387,7 @@ final class OverlayWindow: NSPanel {
     func applyOBSMode() {
         let mode = CatSettings.shared.obsCaptureMode
         let hideDesktop = (mode > 0 && CatSettings.shared.obsHideDesktop)
-        title = "KuroCat"
+        title = "小黑桌宠"
         sharingType = .readOnly
         if mode == 2 {
             isOpaque = true

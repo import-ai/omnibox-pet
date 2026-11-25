@@ -5,23 +5,23 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
-    <string>KuroCat</string>
+    <string>小黑桌宠</string>
     <key>CFBundleExecutable</key>
-    <string>KuroCat</string>
+    <string>XiaoheiPet</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.chanke.kurocat</string>
+    <string>pro.omnibox.xiaohei-pet</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>KuroCat</string>
+    <string>XiaoheiPet</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.4.0</string>
+    <string>0.1.0</string>
     <key>CFBundleVersion</key>
-    <string>140</string>
+    <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>LSUIElement</key>
@@ -29,19 +29,6 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSInputMonitoringUsageDescription</key>
-    <string>KuroCat 需要「输入监控」权限以在打字和玩游戏时实时接收全状态键盘与鼠标按键，所有输入仅用于本地驱动桌宠动画，绝不记录或上传任何内容。</string>
-    <key>CFBundleDocumentTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeName</key>
-            <string>KuroCat Skin</string>
-            <key>CFBundleTypeExtensions</key>
-            <array>
-                <string>kurocat</string>
-            </array>
-            <key>CFBundleTypeRole</key>
-            <string>Viewer</string>
-        </dict>
-    </array>
+    <string>小黑桌宠需要「输入监控」权限，在打字和玩游戏时实时接收键盘与鼠标按键，所有输入仅用于本地驱动桌宠动画，绝不记录或上传任何内容。</string>
 </dict>
 </plist>

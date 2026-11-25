@@ -1,152 +1,68 @@
-# 🐱 KuroCat — 全状态键盘鼠标桌面萌猫 (macOS / Windows / Linux / 统信 UOS)
+# 小黑桌宠（Xiaohei Pet）
 
-<p align="center">
-  <b>简体中文</b> | <a href="README.en.md">English</a>
-</p>
+小黑 OmniBox 的 macOS 键盘桌宠。基于 [KuroCat](https://github.com/chanke17/kurocat)（MIT）改造：把原项目里的黑猫换成只有头部的小黑，保留全局键鼠监听、2.5D 转头、捕猎眼、摸头、打瞌睡等玩法。
 
-<p align="center">
-  <img src="assets/demo_typing.gif" width="265" alt="敲键盘打字"/>
-  <img src="assets/demo_hunting.gif" width="265" alt="快速晃鼠标捕猎大圆眼"/>
-  <img src="assets/demo_combo.gif" width="265" alt="边打字边拖鼠标 + 3键用脚按"/>
-</p>
+![小黑桌宠 12 种状态](docs/xiaohei-states.jpg)
 
-<p align="center">
-  <b>超轻量级原生桌面宠物 · 打字 & 玩游戏全状态硬件级监听 · 2.5D 球面转头 · 捕猎大圆眼 · 可切换猫咪皮肤</b><br/>
-  Native macOS (Swift + CoreGraphics + IOHIDManager) · Windows (C++17 + GDI+ + Raw Input) · Linux / 统信 UOS (C++17 + GTK3/Cairo + XInput2/evdev)
-</p>
+> 状态：**原型 / 草案**。悬浮小爪等适配属于衍生设计，尚未作为小黑的正式形象规范确认。
 
----
+## 运行
 
-## ✨ 特性亮点
-
-- **🎮 打字 & 玩游戏全状态接收（真正全键无冲 NKRO）**
-  - **macOS**：双层架构 `IOHIDManager`（内核 HID 硬件层）+ `CGEventTap`，不受中英文输入法干扰，完整支持游戏里长按 `WASD`、组合快捷键、单独修饰键（`⌘ / ⇧ / ⌥ / ⌃ / Fn`）、方向键与 `F1–F12`。
-  - **Windows**：原生 `Raw Input API (RIDEV_INPUTSINK)` 硬件扫描码监听，打字与 DirectX/Vulkan 游戏内按键、鼠标锁定微动均可全局捕获。
-  - **Linux & 统信 UOS**：双层 `XInput2 (XI_RawKeyPress/Motion)` + 内核 `evdev (/dev/input/event*)`，**在统信 UOS / Deepin / Ubuntu X11 桌面下双击即用、免 sudo 即可全局监听打字与游戏按键**；Wayland 下加入 `input` 组即可开启硬件级全状态监听。
-- **🌀 2.5D 球面转头 & 真实面向视角**
-  - 采用 Live2D 同款球面投影算法，猫头、双耳、双眼与胡须随鼠标光标产生真实的 2.5D 透视转头与视差；键盘与鼠标 180° 朝向小猫摆放，玩游戏时左手键盘、右手鼠标自然不交叉。
-- **⚡ 捕猎大圆眼模式**
-  - 快速晃动鼠标时，小猫瞳孔从竖瞳逐渐扩张为超大圆润黑瞳 + 白色高光，身子压低伏击、尾巴加快抽动、全程锁敌不眨眼。
-- **🐾 丰富交互彩蛋**
-  - **3 键同时按「用脚按」**：同时按住 3 个及以上按键时，小猫会翘起后脚踩上第 3 个键！
-  - **4 键同时按「用尾巴按」**：刚好按住 4 个按键时，尾巴会绕到第 4 个键上按下去！
-  - **键盘跑马灯流光**：一条彗星状追光沿键盘对角线来回扫过，按住的键越多扫得越快、尾部越长，色相每圈轮转一次，像 RGB 背光。
-  - 上述两个彩蛋都可在右键菜单里单独勾选开关（Windows 注册表 / macOS UserDefaults / Linux config.ini 持久化）。
-  - **摸头/摸背互动**：鼠标轻撸猫头会露出惬意闭眼 `— —` 与微光粒子，闲置久了还会打瞌睡冒 `z`。
-  - **智能鼠标穿透、开机自启 & 自动更新检测**：透明区域自动穿透不挡操作；玩竞技游戏时可一键开启「完全鼠标穿透（游戏防误触）」，支持一键勾选「开机自动启动」（Windows 注册表 / macOS LaunchAgent / Linux XDG Autostart），启动时自动检测新版本并在菜单栏/托盘提示更新。
-- **🎨 猫咪皮肤 & 多配色自由搭配**
-  - **猫咪皮肤**：经典小黑猫（原版荧光黄绿瞳）/ 挖煤暹罗猫（暖燕麦奶白 + 2.5D 焦糖面罩 + 巧克力小袜子 + 宝石蓝瞳）/ 美短（银虎斑加白 + 平顶白色额纹）/ 橘白猫（橘色头顶 + 白胸与白手套） / 狸花猫（Windows）
-  - **键盘配色**：经典奶白暖黄 / 暗夜极客黑 / 复古奶油灰（支持开关键盘字符、按键气泡与鼠标点击气泡）
-  - **瞳色与缩放**：6 种瞳色（Windows 另有橄榄金）、5 档尺寸缩放、今日击键与实时 KPM 统计。
-
-### 四款皮肤 6 态预览
-
-| 经典小黑猫 | 挖煤暹罗猫 |
-| :---: | :---: |
-| <img src="assets/preview_black.jpg" width="420" alt="经典小黑猫预览"/> | <img src="assets/preview_siamese.jpg" width="420" alt="挖煤暹罗猫预览"/> |
-
-| 美短（银虎斑加白） | 橘白猫 |
-| :---: | :---: |
-| <img src="assets/preview_shorthair.jpg" width="420" alt="美短六态预览"/> | <img src="assets/preview_orangeWhite.jpg" width="420" alt="橘白猫六态预览"/> |
-
-新增皮肤的六态图为应用原生绘制：待机、左上转头、右下转头、捕猎、键鼠与第三只脚、摸头闭眼。图中使用可选瞳色「淡金青绿」；在菜单中先选择皮肤，再到「瞳色切换」选择喜欢的配色。
-
-### 狸花猫（Windows）
-
-<img src="assets/preview_tabby_windows.png" width="520" alt="原版小黑猫与狸花猫在坐姿和打字时的对比"/>
-
----
-
-## 📦 下载与运行
-
-前往右侧 **[Releases](../../releases)** 页面直接下载对应系统版本（由 GitHub Actions 自动编译）：
-
-### 🍎 macOS (Apple Silicon & Intel 通用 · macOS 11+)
-1. 下载 `KuroCat-macOS-universal.zip` 解压，将 `KuroCat.app` 拖入「应用程序」打开（常驻顶部菜单栏，不占 Dock）。
-2. 首次使用点击小猫底部提示胶囊，前往 **系统设置 → 隐私与安全性 → 输入监控** 勾选 `KuroCat` 后在菜单栏点「重启 KuroCat」即可全局监听打字与游戏按键。
-3. 支持在菜单中一键开启 **开机自动启动**；开启「完全鼠标穿透」后，可通过顶部菜单栏小猫图标或 **按住 `⌥ Option` 键直接右键/拖动小猫**。
-
-**本地源码编译：**
 ```bash
-chmod +x build.sh
-./build.sh
-open KuroCat.app
+./build.sh          # 生成 XiaoheiPet.app（arm64 + x86_64，macOS 11+）
+open XiaoheiPet.app
 ```
 
-### 🪟 Windows (Windows 7 SP1 / 8 / 10 / 11 x64)
-1. 下载单文件 `KuroCat-Windows-x64.exe`（约 220 KB，**零外部运行时依赖**），双击即可运行，常驻右下角系统托盘。
-2. 右键小猫或左键/右键托盘小猫图标即可切换皮肤、键盘配色、尺寸、**开机自动启动**、游戏防误触穿透模式等。
-3. **开启「完全鼠标穿透」后，以下 4 种方式均可随时取消或呼出菜单**：
-   - 全局快捷键：**`Ctrl + Alt + Shift + P`** 一键切换/取消穿透；
-   - 临时解锁：按住 **`Alt`** 键，再直接右键小猫取消勾选或左键拖动；
-   - 系统托盘：点击任务栏右下角 **`^` 隐藏图标区** 中的黑猫图标（左键或右键均可弹出菜单）；
-   - 保底方式：**再次双击 `KuroCat.exe`**，会自动取消穿透并直接在鼠标处弹出设置菜单。
-   > **游戏里小猫只跟鼠标、不跟键盘？** 这类游戏（及 WeGame 等启动器）以管理员权限运行，Windows 会拦截它的键盘输入。右键小猫 →「以管理员身份重新启动」即可；想一劳永逸可勾选「每次启动都以管理员身份运行」。小猫检测到这种游戏时也会在托盘弹出提示。
-   >
-   > **进游戏小猫消失？** 小猫会在全屏/无边框游戏切到前台后自动重新置顶，游戏切换分辨率后也会自动回到屏幕内。如果游戏用的是「独占全屏」，任何桌面窗口都无法盖在上面，请在游戏设置里改成「无边框窗口 / 窗口化全屏」。
-   >
-   > **下载了新版却还提示更新？** 旧版小猫还在后台运行。新版启动时会自动结束旧版并接管；更新提示里也会显示当前运行的程序路径，方便找到并删除旧的 exe。
+首次运行后，在「系统设置 → 隐私与安全性 → 输入监控」中勾选「小黑桌宠」，再从菜单栏小黑图标选择「重启小黑桌宠」。没有稳定签名证书时，`build.sh` 使用 ad-hoc 签名，每次重新构建后可能需要重新授权。
 
-**本地源码编译（MSVC / MinGW）：**
-```bat
-cd windows
-build.bat
-```
-或使用 CMake：
-```bat
-cd windows
-cmake -B build && cmake --build build --config Release
-```
+右键小黑或点击菜单栏图标打开菜单。「显示悬浮小爪」默认开启，关闭后进入纯头模式。
 
-### 🐧 Linux & 统信 UOS / 银河麒麟 (x86_64 & ARM64)
-支持 **Ubuntu 20.04+ / Debian 11+ / Deepin / 统信 UOS（x86_64 & ARM64 飞腾/鲲鹏）/ 银河麒麟 / Arch / Fedora**：
+## 角色来源
 
-1. **免密码安装（推荐统信 UOS / 银河麒麟，不需要开机密码）**：
-   - 下载 `KuroCat-Linux-x86_64.tar.gz`（Intel/AMD/兆芯/海光）或 `KuroCat-Linux-arm64.tar.gz`（飞腾/鲲鹏等 ARM64），解压。
-   - 在解压出的文件夹里右键「在终端中打开」，执行 `bash install.sh`。程序只装到当前用户的 `~/.local`，装完自动启动，开始菜单可搜到 **KuroCat**；卸载执行 `bash uninstall.sh`。
-   - 压缩包里的 `安装说明.txt` 有麒麟「应用执行控制」、统信「开发者模式」、CPU 架构不匹配等常见问题的处理方法。
-2. **`.deb` 安装包（统信 UOS / Deepin / Ubuntu / Debian / 麒麟）**：
-   - 双击 `KuroCat-Linux-amd64.deb` / `KuroCat-Linux-arm64.deb` 用软件包安装器安装（系统会要求输入开机密码），或终端执行：
-     ```bash
-     sudo apt install ./KuroCat-Linux-amd64.deb
-     ```
-   - 安装包在 Debian 10（glibc 2.28）环境中编译，统信 UOS 20、银河麒麟 V10 等较老的系统也能运行；之后在软件内「检查更新」会装到当前用户目录，**不再需要输入密码**。
-   - **麒麟安装失败**：「安全中心」→「应用保护 / 应用执行控制」改为「关闭」或「警告」后再装，或直接用上面的免密码安装。
-3. **其他 Linux 发行版（Arch / Fedora 等）**：
-   - 解压 tar.gz 后运行 `bash install.sh`，或直接运行 `./kurocat`。
-   - 若使用纯 **Wayland** 会话，执行一次 `sudo usermod -aG input $USER` 并重新登录即可启用 `evdev` 内核级全局监听。
-4. **电脑变卡？** 默认使用省电自适应帧率（打字/移动鼠标时 30fps、空闲 20fps、睡觉 10fps）；右键小猫可开启「高帧率 60fps」，低配电脑请保持关闭。
-5. **龙芯（LoongArch / MIPS）本地源码编译**：
-   ```bash
-   sudo apt install g++ pkg-config libgtk-3-dev libcairo2-dev libx11-dev libxi-dev
-   cd linux && chmod +x build.sh build_deb.sh
-   ./build.sh        # 编译可执行文件
-   ./build_deb.sh    # 一键打成 .deb 安装包
-   ```
+- 几何来自 omnibox-art 已选定的正面基准 [front V14](../omnibox-art/assets/ip/xiaohei/front/v14/README.md)：耳朵、头部、眼白、瞳孔四部分路径原样使用。
+- `Sources/XiaoheiArt.swift` 由脚本生成，不手改：
 
----
+  ```bash
+  python3 scripts/generate-xiaohei-art.py ../omnibox-art/assets/ip/xiaohei/front/v14/xiaohei-front-v14.svg
+  python3 scripts/generate-xiaohei-art.py <同一 SVG> --check   # 校验是否与源 SVG 一致
+  ```
 
-## 📁 项目结构
+- App 图标：`python3 scripts/make-app-icon.py ../omnibox-art/assets/ip/xiaohei/front/v14/xiaohei-front-v14.png`，小黑头部 + 品牌蓝 `#3B82F6` 圆角底。
+- 角色色：猫头与瞳孔 `#171717`，眼白 `#FEF6EC`。
 
-```text
-KuroCat/
-├── Sources/                   # macOS 原生 Swift 源码 (Apple Silicon + Intel 通用)
-├── Resources/                 # macOS Info.plist & AppIcon.icns
-├── build.sh                   # macOS 一键通用二进制编译脚本
-├── windows/                   # Windows 原生 C++17 (Win32 + GDI+ + Raw Input)
-├── linux/                     # Linux & 统信 UOS 原生 C++17 (GTK3 + Cairo + XInput2 + evdev)
-│   ├── src/                   # KeyMap / InputEngine / CatPhysics / CatRenderer / main.cpp
-│   ├── build.sh               # 本地编译脚本
-│   └── build_deb.sh           # 一键打包 Debian / 统信 UOS .deb 安装包
-└── .github/workflows/build.yml # macOS + Windows + Linux (x86_64 & arm64) 全平台自动发版
+## 身份约束与适配
+
+遵守 omnibox-art 的小黑固定身份：只有头部，没有鼻子、嘴巴、胡须、身体、脖子、四肢或尾巴，不加瞳孔高光。原版依赖身体的玩法改为：
+
+| KuroCat 原玩法 | 小黑桌宠 |
+| --- | --- |
+| 猫身体 + 前爪打字、握鼠标 | 头部悬浮在键盘上方；两只**不连接头部的悬浮小爪**按键、握鼠标（衍生设计，可关闭） |
+| 关闭小爪 | 纯头模式：小黑朝按下的键点头 |
+| 3 键同时按「用脚按」 | 小黑用头顶第 3 个键，键上出现品牌蓝冲击线 |
+| 4 键同时按「用尾巴按」 | 不画尾巴，只在第 4 个键上显示冲击线 |
+| 竖瞳 → 捕猎大圆瞳 | 圆瞳放大（基础形象本来就是圆瞳） |
+| 摸头眯眼、打瞌睡、打哈欠 | `^ ^` 笑眼、`︶` 闭眼；不画嘴，打哈欠时只闭眼 |
+| 打字太快生气 | 「思考中」表情包式的平顶半眯眼，内眼角压低，旁边加 💢 符号 |
+| 被拎起 | `> <` 挤眼（参考「加油」「赞」表情包） |
+| 头晕 | 螺旋眼 + 星星 |
+| 皮肤、瞳色切换 | 已从菜单移除，小黑配色固定 |
+
+悬浮小爪的造型参考「记笔记」「赶工」表情包：黑色圆团，浅色描边，前缘两道趾缝。omnibox-art 规范说明，表情包中的装饰不代表小黑拥有对应器官，所以小爪只用于这个桌宠，**不是**小黑基础设定。小黑轮廓外的浅色描边是贴纸式描边，用来在深色壁纸上保持可读，不属于角色结构。
+
+转头、侧视时眼睛的移动和透视压缩，是基于正面图的最小推导，没有使用侧面转面图。
+
+## 与上游的差异
+
+- Bundle ID 为 `pro.omnibox.xiaohei-pet`，开机自启的 LaunchAgent 同名，和 KuroCat 互不影响。
+- 关闭了上游的自动更新检查和应用内自更新（否则会下载 KuroCat 覆盖本应用），移除了皮肤导入的拖放入口。
+- 只改了 macOS（`Sources/`）。`windows/`、`linux/` 仍是上游的猫，构建和发布工作流未适配。
+- 上游说明保留在 [README.kurocat.md](README.kurocat.md)、[README.kurocat.en.md](README.kurocat.en.md)，许可证见 [LICENSE](LICENSE)。
+
+## 视觉检查
+
+```bash
+./XiaoheiPet.app/Contents/MacOS/XiaoheiPet --render-xiaohei-preview out/qa/xiaohei/sheet.png          # 浅色背景
+./XiaoheiPet.app/Contents/MacOS/XiaoheiPet --render-xiaohei-preview out/qa/xiaohei/sheet-dark.png --dark
 ```
 
----
-
-## 🔒 隐私说明
-
-KuroCat 的所有键盘与鼠标硬件信号**仅在本地内存实时驱动桌宠动画与计数**，**绝不记录按键内容、绝不写日志**；除启动或手动点击「检查更新」时请求官方下载站获取最新版本号外无任何其他联网行为，全部源码完全开源可审计。
-
-## 📄 License
-
-[MIT License](LICENSE)
+不打开窗口，直接输出 12 种状态的总览图。`out/` 已被 Git 忽略。

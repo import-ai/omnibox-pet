@@ -67,6 +67,10 @@ final class CatSettings {
     var footEasterEgg: Bool {
         didSet { UserDefaults.standard.set(footEasterEgg, forKey: "KuroCat.FootEasterEgg") }
     }
+    /// Xiaohei has no limbs; floating detached paws are a derived, switchable adaptation (default on).
+    var xiaoheiPaws: Bool {
+        didSet { UserDefaults.standard.set(xiaoheiPaws, forKey: "Xiaohei.FloatingPaws") }
+    }
     var tailEasterEgg: Bool {
         didSet { UserDefaults.standard.set(tailEasterEgg, forKey: "KuroCat.TailEasterEgg") }
     }
@@ -136,6 +140,7 @@ final class CatSettings {
         showKeyLegends = d.object(forKey: "KuroCat.ShowKeyLegends") as? Bool ?? true
         footEasterEgg = d.object(forKey: "KuroCat.FootEasterEgg") as? Bool ?? true
         tailEasterEgg = d.object(forKey: "KuroCat.TailEasterEgg") as? Bool ?? true
+        xiaoheiPaws = d.object(forKey: "Xiaohei.FloatingPaws") as? Bool ?? true
         keyboardMarquee = d.object(forKey: "KuroCat.KeyboardMarquee") as? Bool ?? true
         obsCaptureMode = d.object(forKey: "KuroCat.OBSCaptureMode") as? Int ?? 0
         obsHideDesktop = d.object(forKey: "KuroCat.OBSHideDesktop") as? Bool ?? false
@@ -368,6 +373,13 @@ final class CatPhysics {
 
     var isBlissfulSquint: Bool {
         petBodyIntensity > 0.35 && !isHappyClosedEyes
+    }
+
+    /// Headless preview hook (render-xiaohei-preview only); never called by the live app.
+    func setPreviewMoods(sleepiness s: CGFloat = 0, petBody b: CGFloat = 0, dizzyPhase d: CGFloat = 0) {
+        sleepiness = s
+        petBodyIntensity = b
+        dizzyPhase = d
     }
 
     // MARK: - Input Hooks

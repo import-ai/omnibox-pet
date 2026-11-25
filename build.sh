@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="KuroCat"
+APP_NAME="XiaoheiPet"
 APP_BUNDLE="$ROOT/${APP_NAME}.app"
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
@@ -91,6 +91,8 @@ SWIFT_SOURCES=(
     "$ROOT/Sources/CatPhysics.swift"
     "$ROOT/Sources/CatRenderer.swift"
     "$ROOT/Sources/CoatPatterns.swift"
+    "$ROOT/Sources/XiaoheiArt.swift"
+    "$ROOT/Sources/XiaoheiRenderer.swift"
     "$ROOT/Sources/OverlayWindow.swift"
     "$ROOT/Sources/AppDelegate.swift"
     "$ROOT/Sources/main.swift"
@@ -121,11 +123,11 @@ lipo -info "$MACOS_DIR/$APP_NAME"
 
 # Keep a consistent signing identity across builds so macOS can match privacy grants.
 # Switching identities can require granting Input Monitoring again. Order of preference:
-#   1. $KUROCAT_SIGN_IDENTITY (CI imports the shared certificate and sets this)
+#   1. $XIAOHEI_SIGN_IDENTITY (CI imports the shared certificate and sets this)
 #   2. Developer ID Application / Apple Development certificate in the keychain
 #   3. Self-signed "KuroCat Code Signing" certificate (create once: scripts/create-macos-signing-cert.sh)
 #   4. Ad-hoc (last resort — permission will be lost on every update)
-SIGN_IDENTITY="${KUROCAT_SIGN_IDENTITY:-}"
+SIGN_IDENTITY="${XIAOHEI_SIGN_IDENTITY:-}"
 if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application:/{print $2; exit}')"
 fi
@@ -141,16 +143,16 @@ fi
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "==> Signing with stable certificate: $SIGN_IDENTITY"
-    codesign --force --deep --sign "$SIGN_IDENTITY" --identifier "com.chanke.kurocat" "$APP_BUNDLE"
+    codesign --force --deep --sign "$SIGN_IDENTITY" --identifier "pro.omnibox.xiaohei-pet" "$APP_BUNDLE"
 else
     echo "==> WARNING: no stable signing certificate found — signing ad-hoc." >&2
     echo "    Users will have to re-enable Input Monitoring after EVERY update." >&2
     echo "    Run scripts/create-macos-signing-cert.sh once to fix this." >&2
-    if [ -n "${KUROCAT_REQUIRE_STABLE_SIGNATURE:-}" ]; then
-        echo "[ERROR] KUROCAT_REQUIRE_STABLE_SIGNATURE is set: refusing to ship an ad-hoc build." >&2
+    if [ -n "${XIAOHEI_REQUIRE_STABLE_SIGNATURE:-}" ]; then
+        echo "[ERROR] XIAOHEI_REQUIRE_STABLE_SIGNATURE is set: refusing to ship an ad-hoc build." >&2
         exit 1
     fi
-    codesign --force --deep --sign - --identifier "com.chanke.kurocat" "$APP_BUNDLE"
+    codesign --force --deep --sign - --identifier "pro.omnibox.xiaohei-pet" "$APP_BUNDLE"
 fi
 echo "==> Designated requirement (what macOS uses to recognise KuroCat across updates):"
 codesign -d -r- "$APP_BUNDLE" 2>&1 | grep -i designated || true

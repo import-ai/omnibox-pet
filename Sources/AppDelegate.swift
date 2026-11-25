@@ -39,9 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let menu = self.buildMenu()
             NSMenu.popUpContextMenu(menu, with: event, for: self.overlayWindow.catView)
         }
-        catView.onDropSkinFiles = { [weak self] urls in
-            for url in urls { self?.importSkin(from: url) }
-        }
+        // KuroCat .kurocat skins do not apply to Xiaohei, so skin-file drops are not wired up.
 
         // Wire dual-layer InputEngine -> CatPhysics
         let engine = InputEngine.shared
@@ -65,10 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startRenderLoop()
         startWindowWatchdog()
 
-        // Auto-check GitHub Releases for updates shortly after launch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-            self?.checkForUpdates(manual: false)
-        }
+        // Upstream KuroCat auto-update is disabled: it would download and install KuroCat over this app.
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -224,8 +219,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = makeMenuBarCatIcon()
-            button.toolTip = "KuroCat 黑猫键盘桌宠"
+            button.image = makeMenuBarXiaoheiIcon()
+            button.toolTip = "小黑桌宠"
         }
         let menu = NSMenu()
         menu.delegate = self
@@ -276,7 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Live stats
         let statsTitle = en
             ? "⌨️ Today \(engine.totalKeystrokesToday)  ·  KPM \(engine.currentKPM)  ·  Pets \(physics.totalPetSessions)"
-            : "⌨️ 今日击键 \(engine.totalKeystrokesToday)  ·  KPM \(engine.currentKPM)  ·  摸猫 \(physics.totalPetSessions) 次"
+            : "⌨️ 今日击键 \(engine.totalKeystrokesToday)  ·  KPM \(engine.currentKPM)  ·  摸小黑 \(physics.totalPetSessions) 次"
         let statsItem = NSMenuItem(title: statsTitle, action: nil, keyEquivalent: "")
         statsItem.isEnabled = false
         menu.addItem(statsItem)
@@ -342,7 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         obsMenu.addItem(.separator())
         let obsHideItem = NSMenuItem(
-            title: tr("后台捕获（隐藏桌面小猫，OBS仍正常捕获）", "Background Capture (Hide on Desktop)"),
+            title: tr("后台捕获（隐藏桌面小黑，OBS 仍正常捕获）", "Background Capture (Hide on Desktop)"),
             action: #selector(toggleOBSHideDesktop),
             keyEquivalent: ""
         )
@@ -360,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let editItem = NSMenuItem(
             title: settings.isEditMode
                 ? tr("✓ 完成调整大小与方向", "✓ Finish Resize & Flip")
-                : tr("调整大小与方向 (双击小猫)", "Resize & Flip (Double-Click Cat)"),
+                : tr("调整大小与方向（双击小黑）", "Resize & Flip (Double-Click Xiaohei)"),
             action: #selector(toggleEditMode),
             keyEquivalent: ""
         )
@@ -368,65 +363,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         editItem.state = settings.isEditMode ? .on : .off
         menu.addItem(editItem)
 
-        // Cat coat submenu
-        let coatMenu = NSMenu()
-        let library = SkinLibrary.shared
-        let customActive = library.skin(id: settings.customSkin) != nil
-        for coat in CatCoatTheme.allCases {
-            let coatTitle: String
-            if en {
-                switch coat {
-                case .classicBlack: coatTitle = "Classic Black Cat"
-                case .siamese: coatTitle = "Siamese Cat"
-                case .shorthair: coatTitle = "Silver Tabby Shorthair"
-                case .orangeWhite: coatTitle = "Orange & White Cat"
-                }
-            } else {
-                coatTitle = coat.rawValue
-            }
-            let item = NSMenuItem(title: coatTitle, action: #selector(selectCoatTheme(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = coat.rawValue
-            item.state = !customActive && settings.coatTheme == coat ? .on : .off
-            coatMenu.addItem(item)
-        }
-        // Imported .kurocat skins (docs/skin-format.md)
-        if !library.skins.isEmpty {
-            coatMenu.addItem(.separator())
-            for skin in library.skins {
-                let item = NSMenuItem(title: skin.name, action: #selector(selectCustomSkin(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = skin.id
-                item.state = settings.customSkin == skin.id ? .on : .off
-                if !skin.author.isEmpty { item.toolTip = tr("作者：\(skin.author)", "Author: \(skin.author)") }
-                coatMenu.addItem(item)
-            }
-        }
-        coatMenu.addItem(.separator())
-        let importItem = NSMenuItem(title: tr("导入皮肤…", "Import Skin…"), action: #selector(showDressingRoom), keyEquivalent: "")
-        importItem.target = self
-        coatMenu.addItem(importItem)
-        let workshopItem = NSMenuItem(title: tr("打开皮肤工坊（制作皮肤）…", "Open Skin Workshop…"), action: #selector(openSkinWorkshop), keyEquivalent: "")
-        workshopItem.target = self
-        coatMenu.addItem(workshopItem)
-        let openDirItem = NSMenuItem(title: tr("打开皮肤文件夹（备份）", "Open Skins Folder (Backup)"), action: #selector(openSkinsFolder), keyEquivalent: "")
-        openDirItem.target = self
-        coatMenu.addItem(openDirItem)
-        if !library.skins.isEmpty {
-            let deleteMenu = NSMenu()
-            for skin in library.skins {
-                let item = NSMenuItem(title: skin.name, action: #selector(deleteCustomSkin(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = skin.id
-                deleteMenu.addItem(item)
-            }
-            let deleteParent = NSMenuItem(title: tr("删除皮肤", "Delete Skin"), action: nil, keyEquivalent: "")
-            deleteParent.submenu = deleteMenu
-            coatMenu.addItem(deleteParent)
-        }
-        let coatParent = NSMenuItem(title: tr("猫咪皮肤 🐱", "Cat Skin 🐱"), action: nil, keyEquivalent: "")
-        coatParent.submenu = coatMenu
-        menu.addItem(coatParent)
+        let pawsItem = NSMenuItem(title: tr("显示悬浮小爪（关闭后小黑用点头打字）", "Floating Paws (Off: Xiaohei Nods to Type)"), action: #selector(toggleXiaoheiPaws), keyEquivalent: "")
+        pawsItem.target = self
+        pawsItem.state = settings.xiaoheiPaws ? .on : .off
+        menu.addItem(pawsItem)
 
         // Keyboard Theme submenu
         let kbMenu = NSMenu()
@@ -450,32 +390,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let kbParent = NSMenuItem(title: tr("键盘配色", "Keyboard Theme"), action: nil, keyEquivalent: "")
         kbParent.submenu = kbMenu
         menu.addItem(kbParent)
-
-        // Eye Color submenu
-        let eyeMenu = NSMenu()
-        for eye in EyeColorTheme.allCases {
-            let eyeTitle: String
-            if en {
-                switch eye {
-                case .neonChartreuse: eyeTitle = "Neon Chartreuse"
-                case .siameseBlue: eyeTitle = "Siamese Ice Blue"
-                case .warmAmber: eyeTitle = "Warm Amber"
-                case .iceCyan: eyeTitle = "Ice Cyan"
-                case .softAmber: eyeTitle = "Soft Amber"
-                case .referenceHazel: eyeTitle = "Golden Hazel"
-                }
-            } else {
-                eyeTitle = eye.rawValue
-            }
-            let item = NSMenuItem(title: eyeTitle, action: #selector(selectEyeTheme(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = eye.rawValue
-            item.state = settings.eyeTheme == eye ? .on : .off
-            eyeMenu.addItem(item)
-        }
-        let eyeParent = NSMenuItem(title: tr("瞳色切换", "Eye Color"), action: nil, keyEquivalent: "")
-        eyeParent.submenu = eyeMenu
-        menu.addItem(eyeParent)
 
         // Drawing Tablet & Stylus submenu
         let tabMenu = NSMenu()
@@ -510,31 +424,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let relaunchItem = NSMenuItem(title: tr("重启 KuroCat (授权后刷新)", "Restart KuroCat"), action: #selector(relaunchApp), keyEquivalent: "")
+        let relaunchItem = NSMenuItem(title: tr("重启小黑桌宠（授权后刷新）", "Restart Xiaohei Pet"), action: #selector(relaunchApp), keyEquivalent: "")
         relaunchItem.target = self
         menu.addItem(relaunchItem)
 
-        if let ver = availableUpdateVersion {
-            let title = isUpdating
-                ? tr("⏳ 正在下载更新 \(ver)...", "⏳ Downloading update \(ver)...")
-                : tr("🆕 发现新版本 \(ver) — 点击自动更新", "🆕 Update Available \(ver) — Click to Update")
-            let updateItem = NSMenuItem(title: title, action: #selector(openUpdateDownload), keyEquivalent: "")
-            updateItem.target = self
-            updateItem.isEnabled = !isUpdating
-            menu.addItem(updateItem)
-        } else {
-            let checkItem = NSMenuItem(
-                title: tr("检查更新 (当前 v\(currentAppVersion))", "Check for Updates (v\(currentAppVersion))"),
-                action: #selector(manualCheckForUpdates),
-                keyEquivalent: ""
-            )
-            checkItem.target = self
-            menu.addItem(checkItem)
-        }
-
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: tr("退出 KuroCat", "Quit KuroCat"), action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: tr("退出小黑桌宠", "Quit Xiaohei Pet"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -548,8 +444,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = "已授权，键盘监听启动失败"
-            alert.informativeText = "请重启 KuroCat，让系统重新建立键盘监听。\n当前程序位置：\(Bundle.main.bundlePath)"
-            alert.addButton(withTitle: "重启 KuroCat")
+            alert.informativeText = "请重启小黑桌宠，让系统重新建立键盘监听。\n当前程序位置：\(Bundle.main.bundlePath)"
+            alert.addButton(withTitle: "重启小黑桌宠")
             alert.addButton(withTitle: "打开输入监控")
             alert.addButton(withTitle: "取消")
             let response = alert.runModal()
@@ -627,7 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var launchAgentURL: URL {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
-        return dir.appendingPathComponent("com.chanke.kurocat.plist")
+        return dir.appendingPathComponent("pro.omnibox.xiaohei-pet.plist")
     }
 
     private func isAutoStartEnabled() -> Bool {
@@ -643,7 +539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 let appPath = Bundle.main.bundlePath
                 let plist: [String: Any] = [
-                    "Label": "com.chanke.kurocat",
+                    "Label": "pro.omnibox.xiaohei-pet",
                     "ProgramArguments": ["/usr/bin/open", "-a", appPath],
                     "RunAtLoad": true,
                     "KeepAlive": false
@@ -680,6 +576,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleKeyLegends() {
         CatSettings.shared.showKeyLegends.toggle()
+    }
+
+    @objc private func toggleXiaoheiPaws() {
+        CatSettings.shared.xiaoheiPaws.toggle()
     }
 
     @objc private func toggleFootEgg() {
@@ -1187,30 +1087,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Crisp Vector Menu Bar Cat Silhouette Icon
 
-    private func makeMenuBarCatIcon() -> NSImage {
+    private func makeMenuBarXiaoheiIcon() -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let img = NSImage(size: size, flipped: true) { _ in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             ctx.setFillColor(NSColor.black.cgColor)
 
-            // Cute cat head silhouette with ears
-            let path = CGMutablePath()
-            path.move(to: CGPoint(x: 3.0, y: 8.5))
-            path.addLine(to: CGPoint(x: 3.5, y: 2.5))
-            path.addLine(to: CGPoint(x: 7.2, y: 6.0))
-            path.addQuadCurve(to: CGPoint(x: 10.8, y: 6.0), control: CGPoint(x: 9.0, y: 5.5))
-            path.addLine(to: CGPoint(x: 14.5, y: 2.5))
-            path.addLine(to: CGPoint(x: 15.0, y: 8.5))
-            path.addCurve(to: CGPoint(x: 9.0, y: 15.5), control1: CGPoint(x: 16.0, y: 12.8), control2: CGPoint(x: 13.0, y: 15.5))
-            path.addCurve(to: CGPoint(x: 3.0, y: 8.5), control1: CGPoint(x: 5.0, y: 15.5), control2: CGPoint(x: 2.0, y: 12.8))
-            path.closeSubpath()
-
-            // Punch out cute cat eyes
-            path.addEllipse(in: CGRect(x: 5.4, y: 8.8, width: 2.4, height: 2.2))
-            path.addEllipse(in: CGRect(x: 10.2, y: 8.8, width: 2.4, height: 2.2))
-
-            ctx.addPath(path)
-            ctx.fillPath(using: .evenOdd)
+            // Xiaohei V14 silhouette (ears + head) with the eye whites punched out, pupils kept.
+            let svgBounds = CGRect(x: 77, y: 148, width: 486, height: 446)
+            let k = 17.0 / svgBounds.width
+            ctx.translateBy(x: 9, y: 9.4)
+            ctx.scaleBy(x: k, y: k)
+            ctx.translateBy(x: -svgBounds.midX, y: -svgBounds.midY)
+            for d in [XiaoheiArt.earLeftD, XiaoheiArt.earRightD, XiaoheiArt.headD] {
+                ctx.addPath(XiaoheiRenderer.parse(d))
+            }
+            ctx.fillPath()
+            let mirror = CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: 640, ty: 0)
+            let right = XiaoheiArt.rightEyeTransform
+            let both = [right, right.concatenating(mirror)]
+            ctx.setBlendMode(.clear)
+            for t in both {
+                var tt = t
+                if let w = XiaoheiRenderer.parse(XiaoheiArt.eyeWhiteD).copy(using: &tt) { ctx.addPath(w) }
+            }
+            ctx.fillPath()
+            ctx.setBlendMode(.normal)
+            for t in both {
+                var tt = t
+                if let pp = XiaoheiRenderer.parse(XiaoheiArt.pupilD).copy(using: &tt) { ctx.addPath(pp) }
+            }
+            ctx.fillPath()
             return true
         }
         img.isTemplate = true

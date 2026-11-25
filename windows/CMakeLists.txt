@@ -23,6 +23,17 @@ endif()
 string(APPEND art_header "inline constexpr float eyeTransform[] = {static_cast<float>(${CMAKE_MATCH_1}), static_cast<float>(${CMAKE_MATCH_2}), static_cast<float>(${CMAKE_MATCH_3}), static_cast<float>(${CMAKE_MATCH_4}), static_cast<float>(${CMAKE_MATCH_5}), static_cast<float>(${CMAKE_MATCH_6})};\n}\n")
 file(CONFIGURE OUTPUT XiaoheiArt.hpp CONTENT "${art_header}" @ONLY)
 
+set(version_source "${CMAKE_CURRENT_SOURCE_DIR}/../Resources/Info.plist")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${version_source}")
+file(READ "${version_source}" info_plist)
+string(REGEX MATCH "<key>CFBundleShortVersionString</key>[ \t\r\n]*<string>([0-9]+[.][0-9]+[.][0-9]+)</string>" version_match "${info_plist}")
+if(NOT version_match)
+    message(FATAL_ERROR "Missing OmniBox Pet version in Info.plist")
+endif()
+set(app_version "${CMAKE_MATCH_1}")
+file(CONFIGURE OUTPUT AppVersion.hpp
+    CONTENT "#pragma once\ninline constexpr char APP_VERSION_TEXT[] = \"@app_version@\";\ninline constexpr wchar_t APP_VERSION[] = L\"@app_version@\";\n" @ONLY)
+
 add_executable(XiaoheiPet WIN32 src/main.cpp app.manifest)
 target_include_directories(XiaoheiPet PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(XiaoheiPet PRIVATE UNICODE _UNICODE NOMINMAX _WIN32_WINNT=0x0601 WINVER=0x0601)
@@ -34,4 +45,4 @@ else()
     target_link_options(XiaoheiPet PRIVATE -municode -static)
 endif()
 
-target_link_libraries(XiaoheiPet PRIVATE user32 gdi32 gdiplus shell32 advapi32 wtsapi32)
+target_link_libraries(XiaoheiPet PRIVATE user32 gdi32 gdiplus shell32 advapi32 wtsapi32 winhttp)

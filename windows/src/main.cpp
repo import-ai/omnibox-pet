@@ -13,6 +13,12 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <winhttp.h>
+#include <array>
+#include <memory>
+#include <regex>
+#include <thread>
+#include "AppVersion.hpp"
 // MSVC's GDI+ headers call unqualified min()/max() inside inline helpers; NOMINMAX
 // removes the macros, so the std overloads must be visible before <gdiplus.h>.
 #include <algorithm>
@@ -38,13 +44,14 @@ using std::max;
 
 namespace {
 
-constexpr const wchar_t* APP_VERSION = L"1.4.0";
-constexpr const wchar_t* VERSION_PROP = L"XiaoheiPetVersion"; // set on the tray owner window so newer builds can take over older ones
+constexpr const wchar_t* RELEASES_URL = L"https://github.com/import-ai/omnibox-pet/releases/latest";
+constexpr const wchar_t* VERSION_PROP = L"OmniBoxPetVersion"; // set on the tray owner window so newer builds can take over older ones
 constexpr const wchar_t* TRAY_OWNER_CLASS = L"XiaoheiPetTrayOwnerClass";
 constexpr const wchar_t* OVERLAY_CLASS = L"XiaoheiPetOverlayWindowClass";
 constexpr double FRAME_INTERVAL = 1.0 / 60.0;
 constexpr UINT WM_TRAYICON = WM_APP + 1;
 constexpr UINT WM_WAKE_EXISTING = WM_APP + 2;
+constexpr UINT WM_UPDATE_CHECK_DONE = WM_APP + 3;
 constexpr UINT WM_REQUEST_QUIT = WM_APP + 5; // posted by a newer / elevated instance that is taking over
 constexpr UINT_PTR TIMER_RENDER = 1;
 constexpr int HOTKEY_CLICKTHROUGH_ID = 101;
@@ -83,6 +90,8 @@ enum MenuCmd : UINT {
     CMD_RESET_POS,
     CMD_RELAUNCH_ADMIN,
     CMD_TOGGLE_RUN_AS_ADMIN,
+    CMD_SKINS,
+    CMD_CHECK_UPDATES,
     CMD_QUIT,
     CMD_TABLET_AUTO,
     CMD_TABLET_ON,
@@ -99,6 +108,8 @@ struct AppState {
     InputEngine input;
     CatPhysics physics;
 
+    bool updateCheckInProgress = false;
+    bool updateCheckRequested = false;
     bool isVisible = true;
     bool hiddenByFullscreen = false;
     bool isDragging = false;
@@ -329,6 +340,88 @@ int versionToNumber(const std::wstring& v) {
     return parts[0] * 10000 + parts[1] * 100 + parts[2];
 }
 
+enum class UpdateResult { Failed, NoRelease, Current, Available };
+
+std::array<int, 3> versionParts(const std::string& version) {
+    std::array<int, 3> parts{};
+    size_t start = version.front() == 'v' ? 1 : 0;
+    for (int& part : parts) {
+        const size_t dot = version.find('.', start);
+        part = std::stoi(version.substr(start, dot - start));
+        start = dot + 1;
+    }
+    return parts;
+}
+
+UpdateResult checkLatestRelease() {
+    using Handle = std::unique_ptr<void, decltype(&WinHttpCloseHandle)>;
+    Handle session(WinHttpOpen(L"OmniBox Pet", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                              WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0), WinHttpCloseHandle);
+    if (!session || !WinHttpSetTimeouts(session.get(), 5000, 5000, 5000, 5000)) return UpdateResult::Failed;
+    Handle connection(WinHttpConnect(session.get(), L"api.github.com", INTERNET_DEFAULT_HTTPS_PORT, 0),
+                      WinHttpCloseHandle);
+    if (!connection) return UpdateResult::Failed;
+    Handle request(WinHttpOpenRequest(connection.get(), L"GET", L"/repos/import-ai/omnibox-pet/releases/latest",
+                                      nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE),
+                   WinHttpCloseHandle);
+    if (!request ||
+        !WinHttpSendRequest(request.get(), L"Accept: application/vnd.github+json\r\n", DWORD(-1),
+                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(request.get(), nullptr)) return UpdateResult::Failed;
+
+    DWORD status = 0;
+    DWORD size = sizeof(status);
+    if (!WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX)) {
+        return UpdateResult::Failed;
+    }
+    if (status == 404) return UpdateResult::NoRelease;
+    if (status != 200) return UpdateResult::Failed;
+
+    std::string body;
+    char buffer[4096];
+    while (body.size() < 1024 * 1024) {
+        DWORD bytes = 0;
+        if (!WinHttpReadData(request.get(), buffer, sizeof(buffer), &bytes)) return UpdateResult::Failed;
+        if (bytes == 0) break;
+        body.append(buffer, bytes);
+    }
+    static const std::regex tagPattern(R"tag("tag_name"\s*:\s*"(v?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4})")tag");
+    std::smatch tag;
+    if (!std::regex_search(body, tag, tagPattern)) return UpdateResult::Failed;
+    return versionParts(tag[1].str()) > versionParts(APP_VERSION_TEXT) ? UpdateResult::Available : UpdateResult::Current;
+}
+
+void startUpdateCheck(AppState& app, bool manual) {
+    app.updateCheckRequested = app.updateCheckRequested || manual;
+    if (app.updateCheckInProgress) return;
+    app.updateCheckInProgress = true;
+    const HWND window = app.hwnd;
+    std::thread([window] {
+        PostMessageW(window, WM_UPDATE_CHECK_DONE, 0, static_cast<LPARAM>(checkLatestRelease()));
+    }).detach();
+}
+
+void showUpdateResult(AppState& app, UpdateResult result) {
+    const bool manual = app.updateCheckRequested;
+    app.updateCheckRequested = false;
+    app.updateCheckInProgress = false;
+    const bool english = app.settings.isEnglish;
+    const wchar_t* title = english ? L"OmniBox Pet" : L"桌宠小黑";
+    if (result == UpdateResult::Available) {
+        const wchar_t* message = english ? L"A new version is available. Open the release page to download it?"
+                                         : L"有新版本。要打开发布页下载吗？";
+        if (MessageBoxW(app.hwnd, message, title, MB_YESNO | MB_ICONINFORMATION) == IDYES) {
+            ShellExecuteW(app.hwnd, L"open", RELEASES_URL, nullptr, nullptr, SW_SHOWNORMAL);
+        }
+    } else if (manual) {
+        const wchar_t* message = english ? L"Couldn’t check for updates." : L"暂时无法检查更新。";
+        if (result == UpdateResult::Current) message = english ? L"You’re up to date." : L"当前已是最新版本。";
+        if (result == UpdateResult::NoRelease) message = english ? L"No stable release yet." : L"暂无正式版本。";
+        MessageBoxW(app.hwnd, message, title, MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 void enableBestDpiAwareness() {
     // 1. Windows 10 1703+: Per-Monitor V2 DPI Awareness (dynamically loaded so Win7/8 won't fail to launch)
     if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll")) {
@@ -363,7 +456,7 @@ void registerTrayIcon(AppState& app) {
     app.nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     app.nid.uCallbackMessage = WM_TRAYICON;
     app.nid.hIcon = app.trayIcon;
-    wcscpy_s(app.nid.szTip, L"小黑桌宠 (Xiaohei Pet)");
+    wcscpy_s(app.nid.szTip, L"桌宠小黑 (OmniBox Pet)");
     Shell_NotifyIconW(NIM_ADD, &app.nid);
 }
 
@@ -681,7 +774,9 @@ void showContextMenu(AppState& app, POINT screenPt) {
     AppendMenuW(menu, MF_POPUP, (UINT_PTR)langMenu, L"\U0001F310 \u8BED\u8A00 / Language");
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, CMD_QUIT, tr(L"\u9000\u51FA XiaoheiPet", L"Quit XiaoheiPet"));
+    AppendMenuW(menu, MF_STRING, CMD_SKINS, tr(L"皮肤", L"Skins"));
+    AppendMenuW(menu, MF_STRING, CMD_CHECK_UPDATES, tr(L"检查更新…", L"Check for Updates…"));
+    AppendMenuW(menu, MF_STRING, CMD_QUIT, tr(L"退出桌宠小黑", L"Quit OmniBox Pet"));
 
     HWND menuOwner = app.menuOwnerHwnd ? app.menuOwnerHwnd : app.hwnd;
     SetForegroundWindow(menuOwner);
@@ -827,6 +922,14 @@ void showContextMenu(AppState& app, POINT screenPt) {
             if (app.settings.runAsAdmin && !app.isElevated && relaunchSelfElevated(L"--takeover --no-elevate")) {
                 quitApp(app);
             }
+            break;
+        case CMD_SKINS:
+            MessageBoxW(menuOwner, tr(L"小黑现在使用默认造型。衣服、帽子和首饰上线后，可以在这里换装。",
+                                      L"Xiaohei’s default look is active. Clothes, hats, and accessories will appear here when available."),
+                        tr(L"皮肤", L"Skins"), MB_OK | MB_ICONINFORMATION);
+            break;
+        case CMD_CHECK_UPDATES:
+            startUpdateCheck(app, true);
             break;
         case CMD_QUIT:
             quitApp(app);
@@ -1186,6 +1289,10 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             return 0;
 
+        case WM_UPDATE_CHECK_DONE:
+            if (app && hwnd == app->hwnd) showUpdateResult(*app, static_cast<UpdateResult>(lParam));
+            return 0;
+
         case WM_WAKE_EXISTING:
             if (app) {
                 // Re-launching XiaoheiPet.exe unlocks click-through, restores visibility & opens settings menu!
@@ -1417,6 +1524,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
     ShowWindow(app.hwnd, SW_SHOWNOACTIVATE);
     app.lastTickTime = nowSeconds();
     tickAndRender(app);
+    if (!commandLineHasFlag(L"--no-update-check")) startUpdateCheck(app, false);
     app.nextFrameTime = nowSeconds() + FRAME_INTERVAL;
     SetTimer(app.hwnd, TIMER_RENDER, 16, nullptr);
 

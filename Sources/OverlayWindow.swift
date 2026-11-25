@@ -354,7 +354,7 @@ final class OverlayWindow: NSPanel {
     func applyOBSMode() {
         let mode = CatSettings.shared.obsCaptureMode
         let hideDesktop = (mode > 0 && CatSettings.shared.obsHideDesktop)
-        title = "小黑桌宠"
+        title = "桌宠小黑"
         sharingType = .readOnly
         if mode == 2 {
             isOpaque = true

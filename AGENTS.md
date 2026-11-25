@@ -1,4 +1,4 @@
-# 小黑桌宠研发说明
+# 桌宠小黑研发说明
 
 ## 本地构建
 
@@ -16,6 +16,8 @@ Windows x64 使用 Visual Studio 2022 的 C++ 桌面开发工具和 CMake。运�
 ## CI 与发布
 
 GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS Universal 和 Windows x64 应用，分别上传 ZIP。macOS 任务也上传状态预览图。PR 构建使用 ad-hoc 签名。`main` 和 `v*` 标签上的非 PR 构建使用 `import-ai` 组织级 Actions Secrets `CSC_LINK` 与 `CSC_KEY_PASSWORD`。在 Actions 设置里为仓库授权后，构建会从导入的证书中选取 Developer ID Application 签名身份。`v*` 标签构建要求稳定签名，两个平台都构建成功后，将 ZIP 附到对应的 GitHub Release。
+
+两端启动时从 `import-ai/omnibox-pet` 的 GitHub Releases 检查正式版本。新版提示打开发布页，由用户下载并安装。macOS 和 Windows 共用 `Resources/Info.plist` 的 `CFBundleShortVersionString`，发布标签使用 `v<版本号>`，例如 `v0.1.0`。
 
 ## 生成角色素材
 
@@ -36,7 +38,7 @@ GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时�
 
 悬浮小爪是桌宠专用的造型。菜单里关闭「显示悬浮小爪」后只剩探头的脑袋。爪子造型参考「记笔记」「赶工」表情包：黑色圆团，浅色描边，前缘两道趾缝。
 
-| KuroCat 原玩法 | 小黑桌宠 |
+| KuroCat 原玩法 | 桌宠小黑 |
 | --- | --- |
 | 猫坐在键盘后面，前爪打字、握鼠标 | 小黑从键盘后探头，悬浮小爪按键、握鼠标 |
 | 关闭小爪 | 只露出脑袋，朝按下的键点头 |
@@ -57,7 +59,7 @@ GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时�
 ## 与上游的差异
 
 - Bundle ID 为 `pro.omnibox.xiaohei-pet`，开机自启的 LaunchAgent 同名，和 KuroCat 互不影响。
-- 桌宠产物只包含小黑角色，移除了上游角色渲染、皮肤导入和应用内自更新。
+- 两个平台保留「皮肤」入口，当前展示小黑默认造型。后续的皮肤功能用于小黑的衣服、帽子和首饰。
 - macOS（`Sources/`）与 Windows（`windows/`）的应用统一使用小黑。`linux/` 保留上游实现，不参与桌宠发布。
 - 上游说明保留在 [README.kurocat.md](README.kurocat.md)、[README.kurocat.en.md](README.kurocat.en.md)，许可证见 [LICENSE](LICENSE)。
 

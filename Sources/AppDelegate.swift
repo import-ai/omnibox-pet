@@ -13,9 +13,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastDemoKeyTime: CFTimeInterval = 0
     private var isPetVisible = true
     private var isHandingOverToNewerCopy = false
+    private var updateCheckInProgress = false
+    private var updateCheckRequested = false
 
     private var currentAppVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -56,7 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         startRenderLoop()
         startWindowWatchdog()
-
+        if !CommandLine.arguments.contains("--no-update-check") {
+            checkForUpdates(manual: false)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -213,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = makeMenuBarXiaoheiIcon()
-            button.toolTip = "小黑桌宠"
+            button.toolTip = "桌宠小黑"
         }
         let menu = NSMenu()
         menu.delegate = self
@@ -417,13 +421,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let relaunchItem = NSMenuItem(title: tr("重启小黑桌宠（授权后刷新）", "Restart Xiaohei Pet"), action: #selector(relaunchApp), keyEquivalent: "")
+        let skinsItem = NSMenuItem(title: tr("皮肤", "Skins"), action: #selector(showSkins), keyEquivalent: "")
+        skinsItem.target = self
+        menu.addItem(skinsItem)
+
+        let updateItem = NSMenuItem(title: tr("检查更新…", "Check for Updates…"), action: #selector(checkForUpdatesFromMenu), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
+
+        let relaunchItem = NSMenuItem(title: tr("重启桌宠小黑（授权后刷新）", "Restart OmniBox Pet"), action: #selector(relaunchApp), keyEquivalent: "")
         relaunchItem.target = self
         menu.addItem(relaunchItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: tr("退出小黑桌宠", "Quit Xiaohei Pet"), action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: tr("退出桌宠小黑", "Quit OmniBox Pet"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -437,8 +449,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = "已授权，键盘监听启动失败"
-            alert.informativeText = "请重启小黑桌宠，让系统重新建立键盘监听。\n当前程序位置：\(Bundle.main.bundlePath)"
-            alert.addButton(withTitle: "重启小黑桌宠")
+            alert.informativeText = "请重启桌宠小黑，让系统重新建立键盘监听。\n当前程序位置：\(Bundle.main.bundlePath)"
+            alert.addButton(withTitle: "重启桌宠小黑")
             alert.addButton(withTitle: "打开输入监控")
             alert.addButton(withTitle: "取消")
             let response = alert.runModal()
@@ -688,6 +700,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func showSkins() {
+        let english = CatSettings.shared.isEnglish
+        let alert = NSAlert()
+        alert.messageText = english ? "Skins" : "皮肤"
+        alert.informativeText = english
+            ? "Xiaohei’s default look is active. Clothes, hats, and accessories will appear here when available."
+            : "小黑现在使用默认造型。衣服、帽子和首饰上线后，可以在这里换装。"
+        presentMenuAlert(alert)
+    }
+
+    @objc private func checkForUpdatesFromMenu() {
+        checkForUpdates(manual: true)
+    }
+
+    private func checkForUpdates(manual: Bool) {
+        updateCheckRequested = updateCheckRequested || manual
+        guard !updateCheckInProgress else { return }
+        updateCheckInProgress = true
+        let url = URL(string: "https://api.github.com/repos/import-ai/omnibox-pet/releases/latest")!
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        struct Release: Decodable {
+            let tag_name: String
+        }
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            let status = (response as? HTTPURLResponse)?.statusCode
+            let tag = status == 200 ? data.flatMap { try? JSONDecoder().decode(Release.self, from: $0).tag_name } : nil
+            let version = tag.flatMap {
+                $0.range(of: #"^v?[0-9]+\.[0-9]+\.[0-9]+$"#, options: .regularExpression) == nil ? nil : $0
+            }
+            DispatchQueue.main.async {
+                self?.showUpdateResult(version: version, hasNoRelease: status == 404)
+            }
+        }.resume()
+    }
+
+    private func showUpdateResult(version: String?, hasNoRelease: Bool) {
+        let manual = updateCheckRequested
+        updateCheckRequested = false
+        updateCheckInProgress = false
+        let english = CatSettings.shared.isEnglish
+        let alert = NSAlert()
+        if let version, isVersion(version, newerThan: currentAppVersion) {
+            alert.messageText = english ? "OmniBox Pet \(version) is available" : "桌宠小黑 \(version) 已发布"
+            alert.informativeText = english ? "Open the release page to download the new version." : "前往发布页下载新版。"
+            alert.addButton(withTitle: english ? "Open Release" : "打开发布页")
+            alert.addButton(withTitle: english ? "Later" : "稍后")
+            if presentMenuAlert(alert) == .alertFirstButtonReturn,
+               let url = URL(string: "https://github.com/import-ai/omnibox-pet/releases/tag/\(version)") {
+                NSWorkspace.shared.open(url)
+            }
+        } else if manual {
+            if version != nil {
+                alert.messageText = english ? "You’re up to date" : "当前已是最新版本"
+            } else if hasNoRelease {
+                alert.messageText = english ? "No stable release yet" : "暂无正式版本"
+            } else {
+                alert.messageText = english ? "Couldn’t check for updates" : "暂时无法检查更新"
+            }
+            presentMenuAlert(alert)
+        }
+    }
+
+    @discardableResult
+    private func presentMenuAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal()
     }
 
     private func isVersion(_ lhs: String, newerThan rhs: String) -> Bool {

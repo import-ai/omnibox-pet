@@ -461,21 +461,9 @@ void registerTrayIcon(AppState& app) {
 }
 
 HICON createCatTrayIcon() {
-    using namespace Gdiplus;
-    constexpr int sz = 32;
-    Bitmap bmp(sz, sz, PixelFormat32bppPARGB);
-    Graphics g(&bmp);
-    g.SetSmoothingMode(SmoothingModeAntiAlias);
-    g.Clear(Color(0, 0, 0, 0));
-
-    g.TranslateTransform(16.0f, 16.0f);
-    g.ScaleTransform(0.051f, 0.051f);
-    g.TranslateTransform(-320.0f, -375.0f);
-    XiaoheiRenderer::drawFace(g, CatPhysics{}, 10.0f);
-
-    HICON hIcon = nullptr;
-    bmp.GetHICON(&hIcon);
-    return hIcon;
+    const HINSTANCE module = GetModuleHandleW(nullptr);
+    return static_cast<HICON>(LoadImageW(module, L"OMNIBOX_PET_ICON", IMAGE_ICON,
+                                        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0));
 }
 
 void computeDefaultOrigin(int w, int h, int& outX, int& outY) {
@@ -1444,6 +1432,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
     wc.cbSize = sizeof(wc);
     wc.style = CS_DBLCLKS;
     wc.lpfnWndProc = wndProc;
+    wc.hIcon = LoadIconW(hInst, L"OMNIBOX_PET_ICON");
     wc.hInstance = hInst;
     wc.lpszClassName = OVERLAY_CLASS;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);

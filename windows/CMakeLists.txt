@@ -34,7 +34,8 @@ set(app_version "${CMAKE_MATCH_1}")
 file(CONFIGURE OUTPUT AppVersion.hpp
     CONTENT "#pragma once\ninline constexpr char APP_VERSION_TEXT[] = \"@app_version@\";\ninline constexpr wchar_t APP_VERSION[] = L\"@app_version@\";\n" @ONLY)
 
-add_executable(XiaoheiPet WIN32 src/main.cpp app.manifest)
+configure_file(app.rc.in app.rc @ONLY)
+add_executable(XiaoheiPet WIN32 src/main.cpp app.manifest "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
 target_include_directories(XiaoheiPet PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(XiaoheiPet PRIVATE UNICODE _UNICODE NOMINMAX _WIN32_WINNT=0x0601 WINVER=0x0601)
 if(MSVC)

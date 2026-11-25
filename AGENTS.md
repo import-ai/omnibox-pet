@@ -21,12 +21,12 @@ GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时�
 
 ## 生成角色素材
 
-持有相应源素材时，用 `python3 scripts/generate-xiaohei-art.py /path/to/front.svg` 更新 `Sources/XiaoheiArt.swift`，加 `--check` 校验生成结果。用 `python3 scripts/make-app-icon.py /path/to/front.png` 更新应用图标。
+持有相应源素材时，用 `python3 scripts/generate-xiaohei-art.py /path/to/front.svg` 更新 `Sources/XiaoheiArt.swift`，加 `--check` 校验生成结果。用 `python3 scripts/make-app-icon.py` 从仓库内的头像源图生成 macOS 和 Windows 应用图标。
 
 ## 角色来源
 
 - 耳朵、头部、眼白和瞳孔的路径取自小黑的正面造型。项目已包含生成后的 `Sources/XiaoheiArt.swift`，可直接构建。
-- App 图标由小黑头部和品牌蓝（`#3B82F6`）圆角底组成。
+- 应用图标使用小黑社交账号的「眨眼登场」头像。源图为 `Resources/AppIcon.png`，保留渐变背景和原始构图。
 - 角色色：猫头与瞳孔 `#171717`，眼白 `#FEF6EC`。
 
 ## 身份约束与适配

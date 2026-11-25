@@ -16,7 +16,7 @@ mkdir -p "$MACOS_DIR" "$RES_DIR"
 
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 
-cp "$ROOT/Resources/AppIcon.icns" "$ROOT/Resources/InputMonitoringAvatar.png" "$RES_DIR/"
+cp "$ROOT/Resources/AppIcon.icns" "$ROOT/Resources/AppIcon.png" "$RES_DIR/"
 
 SWIFT_SOURCES=(
     "$ROOT/Sources/KeyMap.swift"

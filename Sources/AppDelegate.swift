@@ -808,45 +808,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Crisp Vector Menu Bar Cat Silhouette Icon
 
     private func makeMenuBarXiaoheiIcon() -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        let img = NSImage(size: size, flipped: true) { _ in
+        NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            ctx.setFillColor(NSColor.black.cgColor)
-
-            // The light outline keeps the dark silhouette legible over dark menu bars.
+            ctx.saveGState()
             let svgBounds = CGRect(x: 77, y: 148, width: 486, height: 446)
             let k = 17.0 / svgBounds.width
             ctx.translateBy(x: 9, y: 9.4)
             ctx.scaleBy(x: k, y: k)
             ctx.translateBy(x: -svgBounds.midX, y: -svgBounds.midY)
-            let silhouette = CGMutablePath()
-            for d in [XiaoheiArt.earLeftD, XiaoheiArt.earRightD, XiaoheiArt.headD] {
-                silhouette.addPath(XiaoheiRenderer.parse(d))
-            }
-            ctx.setStrokeColor(NSColor.white.cgColor)
-            ctx.setLineJoin(.round)
-            ctx.setLineWidth(1.2 / k)
-            ctx.addPath(silhouette)
-            ctx.strokePath()
-            ctx.addPath(silhouette)
-            ctx.fillPath()
-            let mirror = CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: 640, ty: 0)
-            let right = XiaoheiArt.rightEyeTransform
-            let both = [right, right.concatenating(mirror)]
             ctx.setFillColor(NSColor.white.cgColor)
-            for t in both {
-                var tt = t
-                if let w = XiaoheiRenderer.parse(XiaoheiArt.eyeWhiteD).copy(using: &tt) { ctx.addPath(w) }
+            for d in [XiaoheiArt.earLeftD, XiaoheiArt.earRightD, XiaoheiArt.headD] {
+                ctx.addPath(XiaoheiRenderer.parse(d))
             }
             ctx.fillPath()
-            ctx.setFillColor(NSColor.black.cgColor)
-            for t in both {
-                var tt = t
-                if let pp = XiaoheiRenderer.parse(XiaoheiArt.pupilD).copy(using: &tt) { ctx.addPath(pp) }
-            }
-            ctx.fillPath()
+            ctx.restoreGState()
             return true
         }
-        return img
     }
 }

@@ -51,6 +51,7 @@ enum XiaoheiRenderer {
 
     private struct EyeGeometry {
         let white: CGPath
+        let whiteBounds: CGRect
         let pupil: CGPath
         let center: CGPoint
         let radius: CGFloat
@@ -62,7 +63,7 @@ enum XiaoheiRenderer {
     private static func eye(white: CGPath, pupil: CGPath, side: CGFloat) -> EyeGeometry {
         let wb = white.boundingBoxOfPath
         let pb = pupil.boundingBoxOfPath
-        return EyeGeometry(white: white, pupil: pupil,
+        return EyeGeometry(white: white, whiteBounds: wb, pupil: pupil,
                            center: CGPoint(x: wb.midX, y: wb.midY), radius: (wb.width + wb.height) * 0.25,
                            pupilCenter: CGPoint(x: pb.midX, y: pb.midY), pupilRadius: (pb.width + pb.height) * 0.25,
                            side: side)
@@ -216,12 +217,10 @@ enum XiaoheiRenderer {
             ctx.scaleBy(x: fx, y: fy)
             ctx.translateBy(x: -e.center.x, y: -e.center.y)
 
-            // The eye white never changes; every expression only replaces the pupil drawn inside it.
-            ctx.setFillColor(cream)
-            ctx.addPath(e.white)
-            ctx.fillPath()
             ctx.addPath(e.white)
             ctx.clip()
+            ctx.setFillColor(cream)
+            ctx.fill(e.whiteBounds)
 
             if dizzy > 0.25 {
                 drawSpiral(in: ctx, eye: e, phase: p.dizzyPhase, alpha: clamp01((dizzy - 0.25) / 0.2))
@@ -229,18 +228,37 @@ enum XiaoheiRenderer {
                 drawSqueeze(in: ctx, eye: e)
             } else if p.isHappyClosedEyes {
                 drawClosedLine(in: ctx, eye: e, happy: true)
-            } else if closure > 0.86 {
-                drawClosedLine(in: ctx, eye: e, happy: false)
             } else {
-                drawPupil(in: ctx, eye: e, physics: p, lid: max(closure, anger * 0.42), anger: anger, hunt: hunt)
+                if closure > 0.86 {
+                    drawClosedLine(in: ctx, eye: e, happy: false)
+                } else {
+                    drawPupil(in: ctx, eye: e, physics: p, hunt: hunt)
+                }
+                let lid = max(closure, anger * 0.42)
+                if lid > 0.01 {
+                    drawUpperLid(in: ctx, eye: e, lid: lid, anger: anger)
+                }
             }
             ctx.restoreGState()
         }
     }
 
-    /// Open pupil; blinking and the angry/sleepy lid cut the pupil from the top, the white stays whole.
-    private static func drawPupil(in ctx: CGContext, eye e: EyeGeometry, physics p: CatPhysics,
-                                  lid: CGFloat, anger: CGFloat, hunt: CGFloat) {
+    private static func drawUpperLid(in ctx: CGContext, eye e: EyeGeometry, lid: CGFloat, anger: CGFloat) {
+        let bounds = e.whiteBounds
+        // Leave a narrow band for the closed-eye line at the bottom of the opening.
+        let edge = bounds.minY + min(lid, 0.64) * bounds.height
+        let innerX = e.side > 0 ? bounds.minX : bounds.maxX
+        let outerX = e.side > 0 ? bounds.maxX : bounds.minX
+        ctx.move(to: CGPoint(x: innerX, y: edge + anger * 0.20 * e.radius))
+        ctx.addLine(to: CGPoint(x: outerX, y: edge - anger * 0.08 * e.radius))
+        ctx.addLine(to: CGPoint(x: outerX, y: bounds.minY - 1))
+        ctx.addLine(to: CGPoint(x: innerX, y: bounds.minY - 1))
+        ctx.closePath()
+        ctx.setFillColor(ink)
+        ctx.fillPath()
+    }
+
+    private static func drawPupil(in ctx: CGContext, eye e: EyeGeometry, physics p: CatPhysics, hunt: CGFloat) {
         let r = e.radius
         let ps = max(0.8, min(1.3, p.pupilScale.value)) * (1 + hunt * 0.30)
         let pr = e.pupilRadius * ps
@@ -249,22 +267,6 @@ enum XiaoheiRenderer {
         let gl = hypot(g.x, g.y)
         if gl > 1 { g = CGPoint(x: g.x / gl, y: g.y / gl) }
         let pc = CGPoint(x: e.pupilCenter.x + g.x * travel, y: e.pupilCenter.y + g.y * travel * 0.9)
-
-        if lid > 0.01 {
-            // Flat top on the pupil (「思考中」 sticker); anger slants it down toward the inner corners.
-            let base = pc.y - pr + lid * 2 * pr
-            let inner = base + anger * 0.30 * pr
-            let outer = base - anger * 0.12 * pr
-            let innerX = pc.x - e.side * 1.6 * pr, outerX = pc.x + e.side * 1.6 * pr
-            let clip = CGMutablePath()
-            clip.move(to: CGPoint(x: innerX, y: inner))
-            clip.addLine(to: CGPoint(x: outerX, y: outer))
-            clip.addLine(to: CGPoint(x: outerX, y: pc.y + 2 * pr))
-            clip.addLine(to: CGPoint(x: innerX, y: pc.y + 2 * pr))
-            clip.closeSubpath()
-            ctx.addPath(clip)
-            ctx.clip()
-        }
 
         var t = CGAffineTransform(translationX: pc.x, y: pc.y)
         t = t.scaledBy(x: ps, y: ps)
@@ -289,8 +291,9 @@ enum XiaoheiRenderer {
             ctx.move(to: CGPoint(x: c.x - 0.62 * r, y: c.y + 0.22 * r))
             ctx.addQuadCurve(to: CGPoint(x: c.x + 0.62 * r, y: c.y + 0.22 * r), control: CGPoint(x: c.x, y: c.y - 0.55 * r))
         } else {
-            ctx.move(to: CGPoint(x: c.x - 0.62 * r, y: c.y))
-            ctx.addQuadCurve(to: CGPoint(x: c.x + 0.62 * r, y: c.y), control: CGPoint(x: c.x, y: c.y + 0.42 * r))
+            let y = c.y + 0.48 * r
+            ctx.move(to: CGPoint(x: c.x - 0.52 * r, y: y))
+            ctx.addQuadCurve(to: CGPoint(x: c.x + 0.52 * r, y: y), control: CGPoint(x: c.x, y: y + 0.32 * r))
         }
         strokeInk(ctx, width: 18)
     }
@@ -328,11 +331,11 @@ enum XiaoheiRenderer {
         let anger = clamp01(p.angerIntensity.value)
         guard anger > 0.25 else { return }
         let a = min(1, (anger - 0.25) / 0.35)
-        let pulse = 1 + sin(p.time * 14) * 0.10
+        let pulse = 1.75 + sin(p.time * 14) * 0.12
         ctx.saveGState()
-        ctx.translateBy(x: 560 + yaw * 20, y: 250)
+        ctx.translateBy(x: 615 + yaw * 20, y: 230)
         ctx.scaleBy(x: pulse / k, y: pulse / k)
-        ctx.setStrokeColor(NSColor(calibratedRed: 0.96, green: 0.22, blue: 0.28, alpha: 0.95 * a).cgColor)
+        ctx.setStrokeColor(NSColor(calibratedRed: 1, green: 0.16, blue: 0.24, alpha: a).cgColor)
         ctx.setLineWidth(2.2)
         ctx.setLineCap(.round)
         let d: CGFloat = 2.6, r: CGFloat = 6.8

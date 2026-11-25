@@ -14,7 +14,7 @@ final class InputMonitoringGuide: NSPanel {
         title = isEnglish ? "OmniBox Pet · Input Monitoring" : "桌宠小黑 · 输入监控"
 
         let icon = DraggableAppIcon(frame: NSRect(x: 12, y: 13, width: 56, height: 56))
-        icon.image = Bundle.main.url(forResource: "InputMonitoringAvatar", withExtension: "png")
+        icon.image = Bundle.main.url(forResource: "AppIcon", withExtension: "png")
             .flatMap { NSImage(contentsOf: $0) } ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.setAccessibilityLabel(isEnglish ? "OmniBox Pet app icon" : "桌宠小黑应用图标")

@@ -14,7 +14,7 @@ final class InputMonitoringGuide: NSPanel {
         title = isEnglish ? "OmniBox Pet · Input Monitoring" : "桌宠小黑 · 输入监控"
 
         let icon = DraggableAppIcon(frame: NSRect(x: 12, y: 13, width: 56, height: 56))
-        icon.image = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
+        icon.image = Bundle.main.url(forResource: "InputMonitoringAvatar", withExtension: "png")
             .flatMap { NSImage(contentsOf: $0) } ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.setAccessibilityLabel(isEnglish ? "OmniBox Pet app icon" : "桌宠小黑应用图标")
@@ -79,19 +79,20 @@ final class InputMonitoringGuide: NSPanel {
 
         let visible = screen.visibleFrame
         let gap: CGFloat = 8
+        let besideY = settingsFrame.maxY - 52 - frame.height
+        let right = settingsFrame.maxX + gap
         let below = settingsFrame.minY - frame.height - gap
-        var x = settingsFrame.maxX - frame.width
-        var y = below
-        if below < visible.minY {
-            if settingsFrame.maxX + gap + frame.width <= visible.maxX {
-                x = settingsFrame.maxX + gap
-                y = settingsFrame.maxY - frame.height
-            } else if settingsFrame.minX - gap - frame.width >= visible.minX {
-                x = settingsFrame.minX - gap - frame.width
-                y = settingsFrame.maxY - frame.height
-            } else {
-                y = settingsFrame.minY + gap
-            }
+        let left = settingsFrame.minX - gap - frame.width
+        let x: CGFloat
+        let y: CGFloat
+        if right + frame.width <= visible.maxX {
+            (x, y) = (right, besideY)
+        } else if below >= visible.minY {
+            (x, y) = (settingsFrame.maxX - frame.width, below)
+        } else if left >= visible.minX {
+            (x, y) = (left, besideY)
+        } else {
+            (x, y) = (settingsFrame.maxX - frame.width, settingsFrame.minY + gap)
         }
         let origin = CGPoint(x: max(visible.minX, min(x, visible.maxX - frame.width)),
                              y: max(visible.minY, min(y, visible.maxY - frame.height)))

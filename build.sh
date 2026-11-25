@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="XiaoheiPet"
+APP_NAME="桌宠小黑"
 TMP_BUILD_DIR="$(mktemp -d "$ROOT/.xiaohei-build.XXXXXX")"
 trap 'rm -rf "$TMP_BUILD_DIR"' EXIT
 APP_BUNDLE="$TMP_BUILD_DIR/${APP_NAME}.app"
@@ -74,7 +74,11 @@ fi
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "==> Signing with stable certificate: $SIGN_IDENTITY"
-    codesign --force --deep --sign "$SIGN_IDENTITY" --identifier "pro.omnibox.xiaohei-pet" "$APP_BUNDLE"
+    signing_options=(--options runtime)
+    if [ -n "${XIAOHEI_REQUIRE_STABLE_SIGNATURE:-}" ]; then
+        signing_options+=(--timestamp)
+    fi
+    codesign --force --sign "$SIGN_IDENTITY" "${signing_options[@]}" --identifier "pro.omnibox.xiaohei-pet" "$APP_BUNDLE"
 else
     echo "==> WARNING: no stable signing certificate found — signing ad-hoc." >&2
     echo "    Users will have to re-enable Input Monitoring after EVERY update." >&2

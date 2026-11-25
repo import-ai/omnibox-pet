@@ -10,8 +10,8 @@
 
 支持 macOS 11 或更新版本，适用于 Apple 芯片和 Intel 芯片的 Mac。
 
-1. 从 [GitHub Releases](https://github.com/import-ai/omnibox-pet/releases) 下载 `XiaoheiPet-macOS-universal.zip`。如果还没有正式版本，可登录 GitHub，从 [最近一次成功的主分支构建](https://github.com/import-ai/omnibox-pet/actions/workflows/desktop-build.yml?query=branch%3Amain+is%3Asuccess) 下载 `XiaoheiPet-macOS-universal`，再解压其中的应用 ZIP。
-2. 解压后，将 `XiaoheiPet.app` 拖到「应用程序」，然后打开。
+1. 从 [GitHub Releases](https://github.com/import-ai/omnibox-pet/releases) 下载 `OmniBoxPet-macOS-universal.zip`。如果还没有正式版本，可登录 GitHub，从 [最近一次成功的主分支构建](https://github.com/import-ai/omnibox-pet/actions/workflows/desktop-build.yml?query=branch%3Amain+is%3Asuccess) 下载 `XiaoheiPet-macOS-universal`，再解压其中的应用 ZIP。
+2. 解压后，将 `桌宠小黑.app` 拖到「应用程序」，然后打开。
 3. 在「系统设置 → 隐私与安全性 → 输入监控」里启用「桌宠小黑」，再从菜单栏小黑图标选择「重启桌宠小黑」。如果更新后小爪对键盘没反应，可以在同一位置重新授权。
 
 ### Windows

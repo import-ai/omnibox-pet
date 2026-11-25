@@ -64,12 +64,46 @@ jobs:
             fi
           fi
           ./build.sh
-          lipo XiaoheiPet.app/Contents/MacOS/XiaoheiPet -verify_arch arm64 x86_64
-          codesign --verify --deep --strict XiaoheiPet.app
-          ditto -c -k --sequesterRsrc --keepParent XiaoheiPet.app XiaoheiPet-macOS-universal.zip
+          lipo "桌宠小黑.app/Contents/MacOS/桌宠小黑" -verify_arch arm64 x86_64
+          codesign --verify --deep --strict "桌宠小黑.app"
+
+      - name: Notarize and staple the release app
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_API_KEY_BASE64:?Missing APPLE_API_KEY}"
+          : "${APPLE_API_KEY_ID:?Missing APPLE_API_KEY_ID}"
+          : "${APPLE_API_ISSUER:?Missing APPLE_API_ISSUER}"
+          umask 077
+          key="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
+          trap 'unlink "$key"' EXIT
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key"
+
+          submission="$RUNNER_TEMP/OmniBoxPet-notarization.zip"
+          ditto -c -k --sequesterRsrc --keepParent "桌宠小黑.app" "$submission"
+          result=$(xcrun notarytool submit "$submission" --key "$key" \
+            --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" \
+            --wait --timeout 25m --output-format json)
+          printf '%s\n' "$result"
+          if ! jq -e '.status == "Accepted"' <<< "$result" >/dev/null; then
+            id=$(jq -r '.id' <<< "$result")
+            xcrun notarytool log "$id" --key "$key" \
+              --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
+            exit 1
+          fi
+          xcrun stapler staple "桌宠小黑.app"
+          xcrun stapler validate "桌宠小黑.app"
+          codesign --verify --deep --strict "桌宠小黑.app"
+
+      - name: Package macOS app
+        run: ditto -c -k --sequesterRsrc --keepParent "桌宠小黑.app" OmniBoxPet-macOS-universal.zip
 
       - name: Render Xiaohei state sheet
-        run: ./XiaoheiPet.app/Contents/MacOS/XiaoheiPet --render-xiaohei-preview xiaohei-states.png
+        run: './桌宠小黑.app/Contents/MacOS/桌宠小黑 --render-xiaohei-preview xiaohei-states.png'
 
       - name: Upload Universal app and state sheet
         uses: actions/upload-artifact@v4
@@ -77,7 +111,7 @@ jobs:
           name: XiaoheiPet-macOS-universal
           if-no-files-found: error
           path: |
-            XiaoheiPet-macOS-universal.zip
+            OmniBoxPet-macOS-universal.zip
             xiaohei-states.png
 
   build-windows:
@@ -137,6 +171,6 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/XiaoheiPet-macOS-universal.zip
+            dist/OmniBoxPet-macOS-universal.zip
             dist/XiaoheiPet-Windows-x64.zip
           fail_on_unmatched_files: true

@@ -17,7 +17,7 @@ Windows x64 使用 Visual Studio 2022 的 C++ 桌面开发工具和 CMake。运�
 
 GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS Universal 和 Windows x64 应用，分别上传 ZIP。macOS 任务也上传状态预览图。PR 构建使用 ad-hoc 签名。`main` 和 `v*` 标签上的非 PR 构建使用 `import-ai` 组织级 Actions Secrets `CSC_LINK` 与 `CSC_KEY_PASSWORD`。在 Actions 设置里为仓库授权后，构建会从导入的证书中选取 Developer ID Application 签名身份。`v*` 标签构建要求 Developer ID 签名和 Hardened Runtime，并使用组织 Secrets `APPLE_API_KEY`、`APPLE_API_KEY_ID` 和 `APPLE_API_ISSUER` 提交 Apple 公证。验收票据后重新打包，两个平台都构建成功后将 ZIP 附到对应的 GitHub Release。
 
-两端启动时从 `import-ai/omnibox-pet` 的 GitHub Releases 检查正式版本。新版提示打开发布页，由用户下载并安装。macOS 和 Windows 共用 `Resources/Info.plist` 的 `CFBundleShortVersionString`，发布标签使用 `v<版本号>`，例如 `v0.1.0`。
+两端启动时从 `import-ai/omnibox-pet` 的 GitHub Releases 检查正式版本。macOS 版校验发布包的 SHA-256 与应用的 Developer ID 签名，下载后可在应用内替换并重启。Windows 版通过发布页手动下载和安装。macOS 和 Windows 共用 `Resources/Info.plist` 的 `CFBundleShortVersionString`，发布标签使用 `v<版本号>`，例如 `v0.1.0`。
 
 ## 生成角色素材
 

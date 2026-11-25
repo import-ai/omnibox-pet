@@ -591,9 +591,11 @@ public:
             rightKey = recentRightKey_;
         }
 
-        // Subtle mini-mouse movement
+        // Convert screen movement to canvas coordinates before the renderer mirrors it.
+        const float screenToCanvasX = settings.flipHorizontal ? -1.0f : 1.0f;
+        const float canvasMouseDx = engine.mouseVelocity.x * screenToCanvasX;
         mouseOffset.setTarget({
-            std::clamp(engine.mouseVelocity.x * 0.0045f, -5.5f, 5.5f),
+            std::clamp(canvasMouseDx * 0.0045f, -5.5f, 5.5f),
             std::clamp(engine.mouseVelocity.y * 0.0045f, -4.5f, 4.5f)
         });
         mouseOffset.step(dt, 120.0f, 16.0f);
@@ -612,11 +614,12 @@ public:
             float mh = std::max(1.0f, (float)(monRect.bottom - monRect.top));
             float nx = std::clamp((float)(engine.lastCursorPos.x - monRect.left) / mw, 0.0f, 1.0f);
             float ny = std::clamp((float)(engine.lastCursorPos.y - monRect.top) / mh, 0.0f, 1.0f);
-            tabletNib.setTarget(tabletQuadPoint(0.25f + nx * 0.64f, 0.16f + ny * 0.68f));
+            const float canvasX = settings.flipHorizontal ? 1.0f - nx : nx;
+            tabletNib.setTarget(tabletQuadPoint(0.25f + canvasX * 0.64f, 0.16f + ny * 0.68f));
             tabletNib.step(dt, 240.0f, 20.0f);
             tabletPenPress.target = engine.leftMouseDown ? 0.88f : 0.0f;
             tabletPenPress.step(dt, 360.0f, 22.0f);
-            tabletPenTilt.target = std::clamp(engine.mouseVelocity.x * 0.00018f, -0.22f, 0.22f);
+            tabletPenTilt.target = std::clamp(canvasMouseDx * 0.00018f, -0.22f, 0.22f);
             tabletPenTilt.step(dt, 120.0f, 14.0f);
         } else {
             tabletPenPress.target = 0.0f;
@@ -769,10 +772,11 @@ public:
 
         float winW = std::max(1.0f, (float)(windowRect.right - windowRect.left));
         float winScale = std::max(0.2f, winW / CanvasWidth);
-        float headScreenX = (float)windowRect.left + eyeOrigin.x * winScale;
+        const float headCanvasX = settings.flipHorizontal ? CanvasWidth - eyeOrigin.x : eyeOrigin.x;
+        float headScreenX = (float)windowRect.left + headCanvasX * winScale;
         float headScreenY = (float)windowRect.top  + eyeOrigin.y * winScale;
 
-        float curDx = ((float)engine.lastCursorPos.x - headScreenX) / 290.0f;
+        float curDx = ((float)engine.lastCursorPos.x - headScreenX) * screenToCanvasX / 290.0f;
         float curDy = ((float)engine.lastCursorPos.y - headScreenY) / 260.0f;
         float curMag = std::hypot(curDx, curDy);
         float clampedCur = std::min(1.0f, curMag);

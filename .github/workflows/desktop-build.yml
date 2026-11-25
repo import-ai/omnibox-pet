@@ -102,9 +102,21 @@ jobs:
           lipo "桌宠小黑.app/Contents/MacOS/桌宠小黑" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "桌宠小黑.app"
 
-      - name: Notarize and staple the release app
+      - name: Package macOS disk image
+        env:
+          IMAGE_NAME: ${{ needs.prepare.outputs.macos }}.dmg
+        run: |
+          set -euo pipefail
+          staging="$(mktemp -d)"
+          trap 'rm -rf "$staging"' EXIT
+          ditto "桌宠小黑.app" "$staging/桌宠小黑.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname "桌宠小黑" -srcfolder "$staging" -fs HFS+ -format UDZO "$IMAGE_NAME"
+
+      - name: Notarize and staple the release disk image and app
         if: env.RELEASE_BUILD == '1'
         env:
+          IMAGE_NAME: ${{ needs.prepare.outputs.macos }}.dmg
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -118,9 +130,8 @@ jobs:
           trap 'unlink "$key"' EXIT
           printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key"
 
-          submission="$RUNNER_TEMP/OmniBoxPet-notarization.zip"
-          ditto -c -k --sequesterRsrc --keepParent "桌宠小黑.app" "$submission"
-          result=$(xcrun notarytool submit "$submission" --key "$key" \
+          codesign --sign "$XIAOHEI_SIGN_IDENTITY" --timestamp "$IMAGE_NAME"
+          result=$(xcrun notarytool submit "$IMAGE_NAME" --key "$key" \
             --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" \
             --wait --timeout 25m --output-format json)
           printf '%s\n' "$result"
@@ -130,8 +141,12 @@ jobs:
               --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
             exit 1
           fi
-          xcrun stapler staple "桌宠小黑.app"
-          xcrun stapler validate "桌宠小黑.app"
+          # Apple issues tickets for both the disk image and the app inside it.
+          for target in "$IMAGE_NAME" "桌宠小黑.app"; do
+            xcrun stapler staple "$target"
+            xcrun stapler validate "$target"
+          done
+          codesign --verify "$IMAGE_NAME"
           codesign --verify --deep --strict "桌宠小黑.app"
 
       - name: Package macOS app
@@ -142,12 +157,13 @@ jobs:
       - name: Render Xiaohei state sheet
         run: './桌宠小黑.app/Contents/MacOS/桌宠小黑 --render-xiaohei-preview xiaohei-states.png'
 
-      - name: Upload Universal app and state sheet
+      - name: Upload macOS packages and state sheet
         uses: actions/upload-artifact@v4
         with:
           name: ${{ needs.prepare.outputs.macos }}
           if-no-files-found: error
           path: |
+            ${{ needs.prepare.outputs.macos }}.dmg
             ${{ needs.prepare.outputs.macos }}.zip
             xiaohei-states.png
 
@@ -211,6 +227,7 @@ jobs:
         with:
           generate_release_notes: true
           files: |
+            dist/${{ needs.prepare.outputs.macos }}.dmg
             dist/${{ needs.prepare.outputs.macos }}.zip
             dist/${{ needs.prepare.outputs.windows }}.zip
           fail_on_unmatched_files: true

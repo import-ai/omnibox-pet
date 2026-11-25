@@ -15,9 +15,9 @@ Windows x64 使用 Visual Studio 2022 的 C++ 桌面开发工具和 CMake。运�
 
 ## CI 与发布
 
-GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS Universal 和 Windows x64 应用，分别上传 ZIP。macOS 任务也上传状态预览图。PR 和 `main` 的 macOS 构建使用 ad-hoc 签名。`v*` 标签构建使用 `import-ai` 组织级 Actions Secrets `CSC_LINK` 与 `CSC_KEY_PASSWORD` 导入 Developer ID Application 证书，签名时启用 Hardened Runtime，再使用组织 Secrets `APPLE_API_KEY`、`APPLE_API_KEY_ID` 和 `APPLE_API_ISSUER` 提交 Apple 公证。验收票据后重新打包，两个平台都构建成功后将 ZIP 附到对应的 GitHub Release。
+GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS Universal 和 Windows x64 应用。macOS 上传 DMG、ZIP 和状态预览图，Windows 上传 ZIP。PR 和 `main` 的 macOS 应用使用 ad-hoc 签名。推送 `v*` 标签时，构建使用 `import-ai` 组织级 Actions Secrets `CSC_LINK` 与 `CSC_KEY_PASSWORD` 导入 Developer ID Application 证书，签署启用 Hardened Runtime 的应用和打包后的 DMG。随后使用组织 Secrets `APPLE_API_KEY`、`APPLE_API_KEY_ID` 和 `APPLE_API_ISSUER` 将 DMG 提交给 Apple 公证，把票据分别附到 DMG 和用于应用内更新的 ZIP 中的应用。两个平台都构建成功后，将 DMG 和 ZIP 附到对应的 GitHub Release。
 
-发布包命名为 `omnibox-pet-v<版本>-macos-universal.zip` 和 `omnibox-pet-v<版本>-windows-x64.zip`。PR 和 `main` 的构建包在版本号后分别加上 `-pr-<编号>-<运行 ID>.<尝试次数>` 和 `-main-<运行 ID>.<尝试次数>`。Actions 产物与对应 ZIP 同名，省略 `.zip`。
+macOS 发布包命名为 `omnibox-pet-v<版本>-macos-universal.dmg` 和 `omnibox-pet-v<版本>-macos-universal.zip`，Windows 发布包命名为 `omnibox-pet-v<版本>-windows-x64.zip`。PR 和 `main` 的构建包在版本号后分别加上 `-pr-<编号>-<运行 ID>.<尝试次数>` 和 `-main-<运行 ID>.<尝试次数>`。Actions 产物使用对应文件名的主体。
 
 两端启动时从 `import-ai/omnibox-pet` 的 GitHub Releases 检查正式版本。macOS 版校验发布包的 SHA-256 与应用的 Developer ID 签名，下载后可在应用内替换并重启。Windows 版通过发布页手动下载和安装。macOS 和 Windows 共用 `Resources/Info.plist` 的 `CFBundleShortVersionString`，发布标签使用 `v<版本号>`，例如 `v0.1.0`。
 

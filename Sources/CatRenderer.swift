@@ -60,7 +60,7 @@ enum CatRenderer {
 
     /// Main 60fps draw routine in flipped 360x320 logical coordinate space.
     static func draw(in ctx: CGContext, physics: CatPhysics, showPermissionPill: Bool,
-                     permissionPillText: String = "点击开启全局/游戏键盘监听 🔑") {
+                     permissionPillText: String = InputEngineStatus.needsPermission.permissionPillText(isEnglish: false)) {
         ctx.saveGState()
         ctx.setAllowsAntialiasing(true)
         ctx.setShouldAntialias(true)

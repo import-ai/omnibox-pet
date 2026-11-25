@@ -94,7 +94,7 @@ final class CatCanvasView: NSView {
 
         let status = InputEngine.shared.status
         CatRenderer.draw(in: ctx, physics: physics, showPermissionPill: status.needsAttention,
-                         permissionPillText: status.permissionPillText)
+                         permissionPillText: status.permissionPillText(isEnglish: CatSettings.shared.isEnglish))
         lastDrawnPose = RenderedPose(physics: physics, settings: CatSettings.shared, size: bounds.size)
         ctx.restoreGState()
     }

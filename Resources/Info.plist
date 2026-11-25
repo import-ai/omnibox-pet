@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.2</string>
+    <string>0.1.3</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>LSUIElement</key>
@@ -29,6 +29,6 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSInputMonitoringUsageDescription</key>
-    <string>桌宠小黑需要「输入监控」权限，在打字和玩游戏时实时接收键盘与鼠标按键，所有输入仅用于本地驱动桌宠动画，绝不记录或上传任何内容。</string>
+    <string>开启后，打字或玩游戏时，小黑会跟着按键动起来。键盘和鼠标动作在本机用于动画，小黑不会保存或上传你输入的内容。</string>
 </dict>
 </plist>

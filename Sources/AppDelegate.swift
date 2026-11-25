@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CryptoKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -15,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var isHandingOverToNewerCopy = false
     private var updateCheckInProgress = false
     private var updateCheckRequested = false
+    private var availableUpdate: UpdateRelease?
+    private var isUpdating = false
     private var inputMonitoringGuide: InputMonitoringGuide?
 
     private var currentAppVersion: String {
@@ -72,8 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.openInputMonitoringSettings()
             }
         }
-        if !CommandLine.arguments.contains("--no-update-check") {
-            checkForUpdates(manual: false)
+        if CommandLine.arguments.contains("--update-install-failed") {
+            DispatchQueue.main.async { [weak self] in self?.handleUpdateDownloadFailure() }
+        } else if !CommandLine.arguments.contains("--no-update-check") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                self?.checkForUpdates(manual: false)
+            }
         }
     }
 
@@ -260,11 +267,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let statusText: String
         if en {
             switch engine.status {
-            case .fullHardware: statusText = "Hardware Input Active (HID + EventTap)"
-            case .hidOnly: statusText = "Hardware HID Active"
-            case .eventTapOnly: statusText = "Global EventTap Active"
-            case .needsPermission: statusText = "Input Monitoring Permission Needed"
-            case .needsRestart: statusText = "Authorized — Restart to Retry"
+            case .fullHardware: statusText = "Key Reactions On (HID + EventTap)"
+            case .hidOnly: statusText = "Key Reactions On (HID)"
+            case .eventTapOnly: statusText = "Key Reactions On (EventTap)"
+            case .needsPermission: statusText = "Key Reactions Are Off"
+            case .needsRestart: statusText = "Permission Granted. Restart Xiaohei to Finish Setup"
             }
         } else {
             statusText = engine.status.rawValue
@@ -274,7 +281,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(statusItem)
 
         if engine.status == .needsPermission {
-            let grantItem = NSMenuItem(title: tr("🔑 前往系统设置开启「输入监控」...", "🔑 Open Input Monitoring Settings..."), action: #selector(openInputMonitoringSettings), keyEquivalent: "")
+            let grantItem = NSMenuItem(title: tr("打开系统设置……", "Open System Settings…"), action: #selector(openInputMonitoringSettings), keyEquivalent: "")
             grantItem.target = self
             menu.addItem(grantItem)
         }
@@ -439,11 +446,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         skinsItem.target = self
         menu.addItem(skinsItem)
 
-        let updateItem = NSMenuItem(title: tr("检查更新…", "Check for Updates…"), action: #selector(checkForUpdatesFromMenu), keyEquivalent: "")
+        let updateItem: NSMenuItem
+        if let tag = availableUpdate?.tag_name {
+            let title = isUpdating
+                ? tr("⏳ 正在下载更新 \(tag)……", "⏳ Downloading \(tag)…")
+                : tr("🆕 发现新版本 \(tag)，点击更新", "🆕 \(tag) Available — Click to Update")
+            updateItem = NSMenuItem(title: title, action: isUpdating ? nil : #selector(openUpdateDownload), keyEquivalent: "")
+        } else {
+            let title = tr("检查更新（v\(currentAppVersion)）", "Check for Updates (v\(currentAppVersion))")
+            updateItem = NSMenuItem(title: title, action: #selector(checkForUpdatesFromMenu), keyEquivalent: "")
+        }
         updateItem.target = self
         menu.addItem(updateItem)
 
-        let relaunchItem = NSMenuItem(title: tr("重启桌宠小黑（授权后刷新）", "Restart OmniBox Pet"), action: #selector(relaunchApp), keyEquivalent: "")
+        let relaunchItem = NSMenuItem(title: tr("重启桌宠小黑", "Restart OmniBox Pet"), action: #selector(relaunchApp), keyEquivalent: "")
         relaunchItem.target = self
         menu.addItem(relaunchItem)
 
@@ -462,11 +478,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if InputEngine.shared.status == .needsRestart {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
-            alert.messageText = "已授权，键盘监听启动失败"
-            alert.informativeText = "请重启桌宠小黑，让系统重新建立键盘监听。\n当前程序位置：\(Bundle.main.bundlePath)"
-            alert.addButton(withTitle: "重启桌宠小黑")
-            alert.addButton(withTitle: "打开输入监控")
-            alert.addButton(withTitle: "取消")
+            let english = CatSettings.shared.isEnglish
+            alert.messageText = english ? "Permission granted. Restart Xiaohei to finish setup." : InputEngineStatus.needsRestart.rawValue
+            let appPath = Bundle.main.bundlePath
+            alert.informativeText = english ? "App location: \(appPath)" : "当前程序位置：\(appPath)"
+            alert.addButton(withTitle: english ? "Restart Xiaohei" : "重启桌宠小黑")
+            alert.addButton(withTitle: english ? "Open System Settings" : "打开系统设置")
+            alert.addButton(withTitle: english ? "Cancel" : "取消")
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {
                 relaunchApp()
@@ -730,8 +748,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         presentMenuAlert(alert)
     }
 
+    // MARK: - Auto Update Checker & In-App Self-Updater
+
+    // Adapted from chanke17/KuroCat AppDelegate.swift at 1d83d7bd.
+
+    private static let releasesURL = URL(string: "https://github.com/import-ai/omnibox-pet/releases")!
+    private static let updateAppName = "桌宠小黑.app"
+    private static let updateSigningRequirement = """
+    anchor apple generic and \
+    certificate 1[field.1.2.840.113635.100.6.2.6] exists and \
+    certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "SWWN7SR369"
+    """
+
+    private struct UpdateRelease: Decodable {
+        struct Asset: Decodable {
+            let name: String
+            let size: Int
+            let digest: String?
+        }
+
+        let tag_name: String
+        let assets: [Asset]
+
+        var pageURL: URL {
+            AppDelegate.releasesURL.appendingPathComponent("tag").appendingPathComponent(tag_name)
+        }
+
+        var diskImage: Asset? {
+            assets.first { $0.name == "omnibox-pet-\(tag_name)-macos-universal.dmg" }
+        }
+
+        func downloadURL(for asset: Asset) -> URL {
+            AppDelegate.releasesURL.appendingPathComponent("download").appendingPathComponent(tag_name)
+                .appendingPathComponent(asset.name)
+        }
+
+        static func parse(_ data: Data) -> UpdateRelease? {
+            guard let release = try? JSONDecoder().decode(Self.self, from: data),
+                  release.tag_name.range(of: #"^v[0-9]+\.[0-9]+\.[0-9]+$"#, options: .regularExpression) != nil else { return nil }
+            return release
+        }
+    }
+
     @objc private func checkForUpdatesFromMenu() {
         checkForUpdates(manual: true)
+    }
+
+    @objc private func openUpdateDownload() {
+        performInAppUpdate()
     }
 
     private func checkForUpdates(manual: Bool) {
@@ -741,38 +805,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let url = URL(string: "https://api.github.com/repos/import-ai/omnibox-pet/releases/latest")!
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        struct Release: Decodable {
-            let tag_name: String
-        }
         URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             let status = (response as? HTTPURLResponse)?.statusCode
-            let tag = status == 200 ? data.flatMap { try? JSONDecoder().decode(Release.self, from: $0).tag_name } : nil
-            let version = tag.flatMap {
-                $0.range(of: #"^v?[0-9]+\.[0-9]+\.[0-9]+$"#, options: .regularExpression) == nil ? nil : $0
-            }
+            let release = status == 200 ? data.flatMap(UpdateRelease.parse) : nil
             DispatchQueue.main.async {
-                self?.showUpdateResult(version: version, hasNoRelease: status == 404)
+                self?.handleUpdateResult(release, hasNoRelease: status == 404)
             }
         }.resume()
     }
 
-    private func showUpdateResult(version: String?, hasNoRelease: Bool) {
+    private func handleUpdateResult(_ release: UpdateRelease?, hasNoRelease: Bool) {
         let manual = updateCheckRequested
         updateCheckRequested = false
         updateCheckInProgress = false
-        let english = CatSettings.shared.isEnglish
-        let alert = NSAlert()
-        if let version, isVersion(version, newerThan: currentAppVersion) {
-            alert.messageText = english ? "OmniBox Pet \(version) is available" : "桌宠小黑 \(version) 已发布"
-            alert.informativeText = english ? "Open the release page to download the new version." : "前往发布页下载新版。"
-            alert.addButton(withTitle: english ? "Open Release" : "打开发布页")
-            alert.addButton(withTitle: english ? "Later" : "稍后")
-            if presentMenuAlert(alert) == .alertFirstButtonReturn,
-               let url = URL(string: "https://github.com/import-ai/omnibox-pet/releases/tag/\(version)") {
-                NSWorkspace.shared.open(url)
-            }
+        if let release, isVersion(release.tag_name, newerThan: currentAppVersion) {
+            let alreadyOffered = availableUpdate?.tag_name == release.tag_name
+            availableUpdate = release
+            if !alreadyOffered && !isUpdating { promptUpdateAvailable(release) }
         } else if manual {
-            if version != nil {
+            let english = CatSettings.shared.isEnglish
+            let alert = NSAlert()
+            if release != nil {
                 alert.messageText = english ? "You’re up to date" : "当前已是最新版本"
             } else if hasNoRelease {
                 alert.messageText = english ? "No stable release yet" : "暂无正式版本"
@@ -780,6 +833,169 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 alert.messageText = english ? "Couldn’t check for updates" : "暂时无法检查更新"
             }
             presentMenuAlert(alert)
+        }
+    }
+
+    private func promptUpdateAvailable(_ release: UpdateRelease) {
+        let english = CatSettings.shared.isEnglish
+        let alert = NSAlert()
+        if let local = newestDownloadedCopy(), !isVersion(release.tag_name, newerThan: local.version),
+           (try? Self.verifyUpdateApp(at: local.url, version: local.version)) == true {
+            alert.messageText = english ? "You already downloaded v\(local.version)" : "你已下载 v\(local.version)"
+            alert.informativeText = english ? "Current version: v\(currentAppVersion)\nNew copy: \(local.url.path)"
+                : "当前版本：v\(currentAppVersion)\n新版位置：\(local.url.path)"
+            alert.addButton(withTitle: english ? "Switch to New Version" : "切换到新版")
+            alert.addButton(withTitle: english ? "Later" : "稍后")
+            if presentMenuAlert(alert) == .alertFirstButtonReturn { switchToDownloadedCopy(local.url) }
+            return
+        }
+
+        alert.messageText = english ? "OmniBox Pet \(release.tag_name) is available" : "桌宠小黑 \(release.tag_name) 已发布"
+        alert.informativeText = english
+            ? "Current version: v\(currentAppVersion)\nLatest version: \(release.tag_name)\nApp location: \(Bundle.main.bundlePath)\n\nOmniBox Pet will restart after updating."
+            : "当前版本：v\(currentAppVersion)\n最新版：\(release.tag_name)\n应用位置：\(Bundle.main.bundlePath)\n\n更新完成后，小黑会自动重启。"
+        alert.addButton(withTitle: english ? "Update Now" : "立即更新")
+        alert.addButton(withTitle: english ? "Open Download Page" : "打开下载页")
+        alert.addButton(withTitle: english ? "Later" : "稍后")
+        switch presentMenuAlert(alert) {
+        case .alertFirstButtonReturn: performInAppUpdate()
+        case .alertSecondButtonReturn: NSWorkspace.shared.open(release.pageURL)
+        default: break
+        }
+    }
+
+    private func performInAppUpdate() {
+        guard !isUpdating, let release = availableUpdate else { return }
+        let currentAppURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
+        guard let asset = release.diskImage, let digest = asset.digest, asset.size > 0,
+              digest.range(of: #"^sha256:[0-9a-f]{64}$"#, options: .regularExpression) != nil,
+              FileManager.default.isWritableFile(atPath: currentAppURL.deletingLastPathComponent().path) else {
+            handleUpdateDownloadFailure()
+            return
+        }
+        isUpdating = true
+        let request = URLRequest(url: release.downloadURL(for: asset), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
+        URLSession.shared.downloadTask(with: request) { [weak self] tempURL, response, error in
+            guard let self else { return }
+            let fm = FileManager.default
+            var workDir: URL?
+            do {
+                guard error == nil, let tempURL, (response as? HTTPURLResponse)?.statusCode == 200,
+                      Self.matchesUpdateDownload(at: tempURL, size: asset.size, digest: digest) else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                let directory = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask,
+                                           appropriateFor: currentAppURL, create: true)
+                workDir = directory
+                let image = directory.appendingPathComponent(asset.name)
+                try fm.moveItem(at: tempURL, to: image)
+                let newAppURL = try Self.copyUpdateApp(from: image, into: directory)
+                guard try Self.verifyUpdateApp(at: newAppURL, version: String(release.tag_name.dropFirst())) else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                DispatchQueue.main.async {
+                    self.installDownloadedApp(newAppURL: newAppURL, currentAppURL: currentAppURL, workDir: directory)
+                }
+            } catch {
+                if let workDir { try? fm.removeItem(at: workDir) }
+                DispatchQueue.main.async { self.handleUpdateDownloadFailure() }
+            }
+        }.resume()
+    }
+
+    private static func copyUpdateApp(from image: URL, into directory: URL) throws -> URL {
+        try runUpdateTool("/usr/bin/codesign", [
+            "--verify", "-R", "=\(updateSigningRequirement) and identifier \"pro.omnibox.xiaohei-pet.dmg\"", image.path
+        ])
+        let mount = directory.appendingPathComponent("mounted", isDirectory: true)
+        try runUpdateTool("/usr/bin/hdiutil", [
+            "attach", "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount.path, image.path
+        ])
+        defer { try? runUpdateTool("/usr/bin/hdiutil", ["detach", "-force", mount.path]) }
+
+        let source = mount.appendingPathComponent(updateAppName, isDirectory: true)
+        guard try source.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let destination = directory.appendingPathComponent(updateAppName, isDirectory: true)
+        try runUpdateTool("/usr/bin/ditto", [source.path, destination.path])
+        return destination
+    }
+
+    private static func matchesUpdateDownload(at url: URL, size: Int, digest: String) -> Bool {
+        guard (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) == size,
+              let bytes = try? Data(contentsOf: url, options: .mappedIfSafe), bytes.count == size else { return false }
+        let actual = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        return digest == "sha256:\(actual)"
+    }
+
+    private static func verifyUpdateApp(at url: URL, version: String) throws -> Bool {
+        try runUpdateTool("/usr/bin/codesign", [
+            "--verify", "--deep", "--strict", "--all-architectures",
+            "-R", "=\(updateSigningRequirement) and identifier \"pro.omnibox.xiaohei-pet\"", url.path
+        ])
+        return try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false
+            && shortVersion(ofAppAt: url) == version
+    }
+
+    private static func runUpdateTool(_ executable: String, _ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
+    }
+
+    private static let installUpdateScript = """
+    PATH=/usr/bin:/bin
+    pid="$1"
+    src="$2"
+    dst="$3"
+    work="$4"
+    backup="$work/previous-app.backup"
+    while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+
+    if mv "$dst" "$backup"; then
+        if mv "$src" "$dst"; then
+            if open -n "$dst"; then
+                rm -rf "$work"
+                exit 0
+            fi
+            mv "$dst" "$src" || { open -R "$backup"; exit 1; }
+        fi
+        mv "$backup" "$dst" || { open -R "$backup"; exit 1; }
+    fi
+    open -n "$dst" --args --update-install-failed
+    rm -rf "$work"
+    exit 1
+    """
+
+    private func installDownloadedApp(newAppURL: URL, currentAppURL: URL, workDir: URL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", Self.installUpdateScript, "install-update",
+                             String(ProcessInfo.processInfo.processIdentifier), newAppURL.path, currentAppURL.path, workDir.path]
+        do {
+            try process.run()
+            NSApp.terminate(nil)
+        } catch {
+            try? FileManager.default.removeItem(at: workDir)
+            handleUpdateDownloadFailure()
+        }
+    }
+
+    private func handleUpdateDownloadFailure() {
+        isUpdating = false
+        let english = CatSettings.shared.isEnglish
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = english ? "Couldn’t install the update" : "暂时无法安装更新"
+        alert.informativeText = english ? "You can download the new version from the release page." : "你可以前往发布页手动下载新版。"
+        alert.addButton(withTitle: english ? "Open Download Page" : "打开下载页")
+        alert.addButton(withTitle: english ? "Cancel" : "取消")
+        if presentMenuAlert(alert) == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(availableUpdate?.pageURL ?? Self.releasesURL.appendingPathComponent("latest"))
         }
     }
 

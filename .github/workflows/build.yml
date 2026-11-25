@@ -57,7 +57,7 @@ jobs:
           XIAOHEI_REQUIRE_STABLE_SIGNATURE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
         run: |
           ./build.sh
-          lipo -verify_arch arm64 x86_64 XiaoheiPet.app/Contents/MacOS/XiaoheiPet
+          lipo XiaoheiPet.app/Contents/MacOS/XiaoheiPet -verify_arch arm64 x86_64
           codesign --verify --deep --strict XiaoheiPet.app
           ditto -c -k --sequesterRsrc --keepParent XiaoheiPet.app XiaoheiPet-macOS-universal.zip
 

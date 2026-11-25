@@ -260,11 +260,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let statusText: String
         if en {
             switch engine.status {
-            case .fullHardware: statusText = "Hardware Input Active (HID + EventTap)"
-            case .hidOnly: statusText = "Hardware HID Active"
-            case .eventTapOnly: statusText = "Global EventTap Active"
-            case .needsPermission: statusText = "Input Monitoring Permission Needed"
-            case .needsRestart: statusText = "Authorized — Restart to Retry"
+            case .fullHardware: statusText = "Key Reactions On (HID + EventTap)"
+            case .hidOnly: statusText = "Key Reactions On (HID)"
+            case .eventTapOnly: statusText = "Key Reactions On (EventTap)"
+            case .needsPermission: statusText = "Key Reactions Are Off"
+            case .needsRestart: statusText = "Permission Granted. Restart Xiaohei to Finish Setup"
             }
         } else {
             statusText = engine.status.rawValue
@@ -274,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(statusItem)
 
         if engine.status == .needsPermission {
-            let grantItem = NSMenuItem(title: tr("🔑 前往系统设置开启「输入监控」...", "🔑 Open Input Monitoring Settings..."), action: #selector(openInputMonitoringSettings), keyEquivalent: "")
+            let grantItem = NSMenuItem(title: tr("打开「输入监控」……", "Open Input Monitoring Settings…"), action: #selector(openInputMonitoringSettings), keyEquivalent: "")
             grantItem.target = self
             menu.addItem(grantItem)
         }
@@ -443,7 +443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateItem.target = self
         menu.addItem(updateItem)
 
-        let relaunchItem = NSMenuItem(title: tr("重启桌宠小黑（授权后刷新）", "Restart OmniBox Pet"), action: #selector(relaunchApp), keyEquivalent: "")
+        let relaunchItem = NSMenuItem(title: tr("重启桌宠小黑", "Restart OmniBox Pet"), action: #selector(relaunchApp), keyEquivalent: "")
         relaunchItem.target = self
         menu.addItem(relaunchItem)
 
@@ -462,11 +462,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if InputEngine.shared.status == .needsRestart {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
-            alert.messageText = "已授权，键盘监听启动失败"
-            alert.informativeText = "请重启桌宠小黑，让系统重新建立键盘监听。\n当前程序位置：\(Bundle.main.bundlePath)"
-            alert.addButton(withTitle: "重启桌宠小黑")
-            alert.addButton(withTitle: "打开输入监控")
-            alert.addButton(withTitle: "取消")
+            let english = CatSettings.shared.isEnglish
+            alert.messageText = english ? "Permission granted. Restart Xiaohei to finish setup." : InputEngineStatus.needsRestart.rawValue
+            let appPath = Bundle.main.bundlePath
+            alert.informativeText = english ? "App location: \(appPath)" : "当前程序位置：\(appPath)"
+            alert.addButton(withTitle: english ? "Restart Xiaohei" : "重启桌宠小黑")
+            alert.addButton(withTitle: english ? "Open Input Monitoring" : "打开「输入监控」")
+            alert.addButton(withTitle: english ? "Cancel" : "取消")
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {
                 relaunchApp()

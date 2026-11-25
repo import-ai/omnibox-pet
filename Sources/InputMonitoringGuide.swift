@@ -11,7 +11,7 @@ final class InputMonitoringGuide: NSPanel {
         isFloatingPanel = true
         hidesOnDeactivate = false
         becomesKeyOnlyIfNeeded = true
-        title = isEnglish ? "OmniBox Pet · Input Monitoring" : "桌宠小黑 · 输入监控"
+        title = isEnglish ? "Let Xiaohei move as you type" : "打字时，让小黑动起来"
 
         let icon = DraggableAppIcon(frame: NSRect(x: 12, y: 13, width: 56, height: 56))
         icon.image = Bundle.main.url(forResource: "AppIcon", withExtension: "png")
@@ -23,7 +23,7 @@ final class InputMonitoringGuide: NSPanel {
 
         let instructions = NSTextField(wrappingLabelWithString: isEnglish
             ? "Drag the icon into the Input Monitoring list and turn on its switch. Already listed? Just turn it on."
-            : "把小黑图标拖进列表，再打开开关。\n列表里已有小黑？直接打开开关。")
+            : "把小黑图标拖进「输入监控」列表，再打开开关。\n列表里已有小黑？直接打开开关。")
         instructions.frame = NSRect(x: 78, y: 12, width: 240, height: 58)
         instructions.font = .systemFont(ofSize: 13)
         contentView?.addSubview(instructions)

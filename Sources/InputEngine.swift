@@ -5,18 +5,21 @@ import IOKit.hid
 import ApplicationServices
 
 enum InputEngineStatus: String {
-    case fullHardware = "硬件级全状态监听中 (HID + EventTap)"
-    case hidOnly = "硬件 HID 监听中 (游戏/打字全支持)"
-    case eventTapOnly = "全局事件监听中 (EventTap)"
-    case needsPermission = "需开启「输入监控」以全局监听键盘"
-    case needsRestart = "已授权，键盘监听启动失败"
+    case fullHardware = "按键互动已开启（HID + EventTap）"
+    case hidOnly = "按键互动已开启（HID）"
+    case eventTapOnly = "按键互动已开启（EventTap）"
+    case needsPermission = "按键互动尚未开启"
+    case needsRestart = "权限已开启，重启小黑后生效"
 
     var needsAttention: Bool {
         self == .needsPermission || self == .needsRestart
     }
 
-    var permissionPillText: String {
-        self == .needsRestart ? "监听启动失败，点击重启重试 ↻" : "点击开启全局/游戏键盘监听 🔑"
+    func permissionPillText(isEnglish: Bool) -> String {
+        if self == .needsRestart {
+            return isEnglish ? "Restart Xiaohei to finish setup" : "重启小黑，开启按键互动"
+        }
+        return isEnglish ? "Let Xiaohei type along" : "让小黑跟着你打字"
     }
 }
 

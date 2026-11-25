@@ -1,58 +1,61 @@
 #!/usr/bin/env python3
-"""Build Resources/AppIcon.icns from the Xiaohei front V14 transparent PNG.
+"""Build the macOS and Windows app icons from the Xiaohei account avatar.
 
-Usage:
-    python3 scripts/make-app-icon.py <path-to-xiaohei-front-v14.png>
-
-The icon is Xiaohei's head on a brand blue (#3B82F6, Tailwind blue-500) macOS squircle.
-Requires Pillow and macOS `iconutil`.
+Usage: python3 scripts/make-app-icon.py [path-to-square-avatar.png]
+Requires Pillow and macOS iconutil.
 """
-import shutil
+import argparse
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+
 ROOT = Path(__file__).resolve().parent.parent
-BLUE = (59, 130, 246, 255)
+RESOURCES = ROOT / "Resources"
 
 
-def make_icon(src: Image.Image, size: int) -> Image.Image:
-    scale = 4  # supersample the squircle edge
-    big = size * scale
-    bg = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    pad = round(big * 0.055)
-    ImageDraw.Draw(bg).rounded_rectangle([pad, pad, big - pad, big - pad], radius=round(big * 0.225), fill=BLUE)
-    bg = bg.resize((size, size), Image.LANCZOS)
-
-    head = src.crop(src.getbbox())
-    target_w = round(size * 0.70)
-    target_h = round(head.height * target_w / head.width)
-    head = head.resize((target_w, target_h), Image.LANCZOS)
-    x = (size - target_w) // 2
-    y = (size - target_h) // 2 + round(size * 0.01)
-    bg.alpha_composite(head, (x, y))
-    return bg
+def make_icon(avatar: Image.Image) -> Image.Image:
+    size = 1024
+    padding = round(size * 0.055)
+    artwork = avatar.resize((size - 2 * padding,) * 2, Image.Resampling.LANCZOS)
+    mask = Image.new("L", artwork.size)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, artwork.width - 1, artwork.height - 1),
+        radius=round(size * 0.225),
+        fill=255,
+    )
+    icon = Image.new("RGBA", (size, size))
+    icon.paste(artwork, (padding, padding), mask)
+    return icon
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit(__doc__)
-    src = Image.open(sys.argv[1]).convert("RGBA")
-    out = ROOT / "Resources" / "AppIcon.icns"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("avatar", nargs="?", type=Path, default=RESOURCES / "AppIcon.png")
+    args = parser.parse_args()
+    with Image.open(args.avatar) as avatar:
+        if avatar.width != avatar.height:
+            parser.error("the source avatar must be square")
+        icon = make_icon(avatar.convert("RGBA"))
+
     with tempfile.TemporaryDirectory() as tmp:
         iconset = Path(tmp) / "AppIcon.iconset"
         iconset.mkdir()
-        for sz in (16, 32, 128, 256, 512):
-            make_icon(src, sz).save(iconset / f"icon_{sz}x{sz}.png")
-            make_icon(src, sz * 2).save(iconset / f"icon_{sz}x{sz}@2x.png")
-        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(out)], check=True)
-        preview = ROOT / "out" / "qa" / "xiaohei" / "app-icon-512.png"
-        preview.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(iconset / "icon_512x512.png", preview)
-    print(f"wrote {out}")
+        for size in (16, 32, 128, 256, 512):
+            for scale, suffix in ((1, ""), (2, "@2x")):
+                pixels = size * scale
+                icon.resize((pixels, pixels), Image.Resampling.LANCZOS).save(
+                    iconset / f"icon_{size}x{size}{suffix}.png"
+                )
+        subprocess.run(
+            ["iconutil", "-c", "icns", str(iconset), "-o", str(RESOURCES / "AppIcon.icns")],
+            check=True,
+        )
+
+    sizes = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+    icon.save(RESOURCES / "AppIcon.ico", sizes=[(size, size) for size in sizes])
 
 
 if __name__ == "__main__":

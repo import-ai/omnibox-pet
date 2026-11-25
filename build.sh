@@ -3,7 +3,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="XiaoheiPet"
-APP_BUNDLE="$ROOT/${APP_NAME}.app"
+TMP_BUILD_DIR="$(mktemp -d "$ROOT/.xiaohei-build.XXXXXX")"
+trap 'rm -rf "$TMP_BUILD_DIR"' EXIT
+APP_BUNDLE="$TMP_BUILD_DIR/${APP_NAME}.app"
+OUTPUT_BUNDLE="$ROOT/${APP_NAME}.app"
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RES_DIR="$CONTENTS/Resources"
@@ -20,7 +23,6 @@ SWIFT_SOURCES=(
     "$ROOT/Sources/InputEngine.swift"
     "$ROOT/Sources/CatPhysics.swift"
     "$ROOT/Sources/CatRenderer.swift"
-    "$ROOT/Sources/CoatPatterns.swift"
     "$ROOT/Sources/XiaoheiArt.swift"
     "$ROOT/Sources/XiaoheiRenderer.swift"
     "$ROOT/Sources/OverlayWindow.swift"
@@ -38,8 +40,7 @@ COMMON_FLAGS=(
     -framework ApplicationServices
 )
 
-TMP_BIN_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_BIN_DIR"' EXIT
+TMP_BIN_DIR="$TMP_BUILD_DIR"
 
 echo "==> Compiling arm64 slice (macOS 11.0+)..."
 swiftc "${COMMON_FLAGS[@]}" -target arm64-apple-macos11.0 "${SWIFT_SOURCES[@]}" -o "$TMP_BIN_DIR/${APP_NAME}_arm64"
@@ -87,4 +88,13 @@ fi
 echo "==> Designated requirement (what macOS uses to recognise KuroCat across updates):"
 codesign -d -r- "$APP_BUNDLE" 2>&1 | grep -i designated || true
 
-echo "==> Built successfully: $APP_BUNDLE"
+if [ -e "$OUTPUT_BUNDLE" ]; then
+    mv "$OUTPUT_BUNDLE" "$TMP_BUILD_DIR/previous.app"
+fi
+if ! mv "$APP_BUNDLE" "$OUTPUT_BUNDLE"; then
+    if [ -e "$TMP_BUILD_DIR/previous.app" ]; then
+        mv "$TMP_BUILD_DIR/previous.app" "$OUTPUT_BUNDLE"
+    fi
+    exit 1
+fi
+echo "==> Built successfully: $OUTPUT_BUNDLE"

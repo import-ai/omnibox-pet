@@ -1,10 +1,12 @@
 # 小黑桌宠（Xiaohei Pet）
 
-小黑 OmniBox 的 macOS 键盘桌宠。小黑躲在键盘后探头，跟着你打字、移动鼠标，也会打瞌睡。
+小黑 OmniBox 的键盘桌宠，支持 macOS 和 Windows。小黑躲在键盘后探头，跟着你打字、移动鼠标，也会打瞌睡。
 
 ![小黑桌宠 12 种状态](docs/xiaohei-states.jpg)
 
 ## 下载与安装
+
+### macOS
 
 支持 macOS 11 或更新版本，适用于 Apple 芯片和 Intel 芯片的 Mac。
 

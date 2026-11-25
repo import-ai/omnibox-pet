@@ -10,21 +10,6 @@
 #include "KeyMap.hpp"
 #include "InputEngine.hpp"
 
-enum class CatCoatTheme : int {
-    ClassicBlack = 0,
-    Siamese = 1,
-    Shorthair = 2,
-    OrangeWhite = 3,
-    Dazed = 4,
-    Tabby = 5
-};
-
-enum class KeyboardTheme : int {
-    ClassicMilk = 0,
-    MidnightHacker = 1,
-    RetroCream = 2
-};
-
 enum class EyeColorTheme : int {
     NeonChartreuse = 0,
     SiameseBlue = 1,
@@ -42,6 +27,7 @@ struct CatSettings {
     bool footEasterEgg = true;
     bool tailEasterEgg = true;
     bool keyboardMarquee = true;
+    bool showPaws = true;
     int obsCaptureMode = 0; // 0 = off, 1 = OBS transparent window capture, 2 = OBS green screen (#00FF00)
     bool obsHideDesktop = false;
     bool autoHideFullscreen = false;
@@ -54,11 +40,8 @@ struct CatSettings {
     bool alwaysOnTop = true;
     bool runAsAdmin = false; // relaunch elevated so keys typed into admin-level apps/games are visible (UIPI)
     float scale = 1.0f;
-    CatCoatTheme coatTheme = CatCoatTheme::ClassicBlack;
     KeyboardTheme keyboardTheme = KeyboardTheme::ClassicMilk;
     EyeColorTheme eyeTheme = EyeColorTheme::NeonChartreuse;
-    // Content id (16 hex chars) of the imported .kurocat skin in use; empty = the built-in coatTheme.
-    std::string customSkin;
     int posX = -99999;
     int posY = -99999;
 
@@ -76,6 +59,7 @@ struct CatSettings {
         footEasterEgg    = readDword(L"FootEasterEgg", 1) != 0;
         tailEasterEgg    = readDword(L"TailEasterEgg", 1) != 0;
         keyboardMarquee  = readDword(L"KeyboardMarquee", 1) != 0;
+        showPaws         = readDword(L"ShowPaws", 1) != 0;
         obsCaptureMode   = std::clamp((int)readDword(L"OBSCaptureMode", 0), 0, 2);
         obsHideDesktop   = readDword(L"OBSHideDesktop", 0) != 0;
         autoHideFullscreen = readDword(L"AutoHideFullscreen", 0) != 0;
@@ -87,22 +71,8 @@ struct CatSettings {
         alwaysOnTop      = readDword(L"AlwaysOnTop", 1) != 0;
         runAsAdmin       = readDword(L"RunAsAdmin", 0) != 0;
         scale            = std::clamp((float)readDword(L"ScalePct", 100) / 100.0f, 0.5f, 2.0f);
-        coatTheme        = (CatCoatTheme)std::clamp((int)readDword(L"CoatTheme", 0), 0, static_cast<int>(CatCoatTheme::Tabby));
         keyboardTheme    = (KeyboardTheme)std::clamp((int)readDword(L"KeyboardTheme", 0), 0, 2);
         eyeTheme         = (EyeColorTheme)std::clamp((int)readDword(L"EyeTheme", 0), 0, (int)EyeColorTheme::OliveGold);
-        {
-            wchar_t buf[32] = {0};
-            DWORD type = 0, sz = sizeof(buf) - sizeof(wchar_t);
-            customSkin.clear();
-            if (RegQueryValueExW(hKey, L"CustomSkin", nullptr, &type, (LPBYTE)buf, &sz) == ERROR_SUCCESS && type == REG_SZ) {
-                for (int i = 0; buf[i] && i < 16; ++i) {
-                    wchar_t c = buf[i];
-                    if (!((c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f'))) { customSkin.clear(); break; }
-                    customSkin += (char)c;
-                }
-                if (customSkin.size() != 16) customSkin.clear();
-            }
-        }
         DWORD hasPos     = readDword(L"HasPos", 0);
         if (hasPos) {
             posX = (int)readDword(L"PosX", 0);
@@ -123,6 +93,7 @@ struct CatSettings {
         writeDword(L"FootEasterEgg", footEasterEgg ? 1 : 0);
         writeDword(L"TailEasterEgg", tailEasterEgg ? 1 : 0);
         writeDword(L"KeyboardMarquee", keyboardMarquee ? 1 : 0);
+        writeDword(L"ShowPaws", showPaws ? 1 : 0);
         writeDword(L"OBSCaptureMode", (DWORD)obsCaptureMode);
         writeDword(L"OBSHideDesktop", obsHideDesktop ? 1 : 0);
         writeDword(L"AutoHideFullscreen", autoHideFullscreen ? 1 : 0);
@@ -134,13 +105,8 @@ struct CatSettings {
         writeDword(L"AlwaysOnTop", alwaysOnTop ? 1 : 0);
         writeDword(L"RunAsAdmin", runAsAdmin ? 1 : 0);
         writeDword(L"ScalePct", (DWORD)(scale * 100.0f + 0.5f));
-        writeDword(L"CoatTheme", (DWORD)coatTheme);
         writeDword(L"KeyboardTheme", (DWORD)keyboardTheme);
         writeDword(L"EyeTheme", (DWORD)eyeTheme);
-        {
-            std::wstring id(customSkin.begin(), customSkin.end());
-            RegSetValueExW(hKey, L"CustomSkin", 0, REG_SZ, (const BYTE*)id.c_str(), (DWORD)((id.size() + 1) * sizeof(wchar_t)));
-        }
         if (posX != -99999 && posY != -99999) {
             writeDword(L"HasPos", 1);
             writeDword(L"PosX", (DWORD)posX);

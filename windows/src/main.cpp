@@ -57,6 +57,7 @@ enum MenuCmd : UINT {
     CMD_TOGGLE_AUTOHIDE_FS,
     CMD_TOGGLE_AUTOSTART,
     CMD_TOGGLE_BADGES,
+    CMD_TOGGLE_PAWS,
     CMD_TOGGLE_MOUSE_BADGES,
     CMD_TOGGLE_KEY_LEGENDS,
     CMD_TOGGLE_FOOT,
@@ -639,6 +640,9 @@ void showContextMenu(AppState& app, POINT screenPt) {
     AppendMenuW(menu, MF_STRING | (app.settings.showKeyLegends ? MF_CHECKED : 0), CMD_TOGGLE_KEY_LEGENDS, tr(L"\u663E\u793A\u952E\u76D8\u5B57\u7B26", L"Show Keycap Legends"));
     AppendMenuW(menu, MF_STRING | (app.settings.keyboardMarquee ? MF_CHECKED : 0), CMD_TOGGLE_MARQUEE, tr(L"\u952E\u76D8\u8DD1\u9A6C\u706F\u6D41\u5149", L"Keyboard RGB Marquee"));
 
+    AppendMenuW(menu, MF_STRING | (app.settings.showPaws ? MF_CHECKED : 0), CMD_TOGGLE_PAWS,
+        tr(L"显示悬浮小爪", L"Show Floating Paws"));
+
     // OBS Live Capture Mode submenu
     HMENU obsMenu = CreatePopupMenu();
     AppendMenuW(obsMenu, MF_STRING | (app.settings.obsCaptureMode == 0 ? MF_CHECKED : 0), CMD_OBS_OFF, tr(L"\u5173\u95ED\uFF08\u6B63\u5E38\u684C\u9762\u60AC\u6D6E\uFF09", L"Off (Normal Overlay)"));
@@ -718,6 +722,10 @@ void showContextMenu(AppState& app, POINT screenPt) {
             break;
         case CMD_TOGGLE_AUTOSTART:
             setAutoStartEnabled(!isAutoStartEnabled());
+            break;
+        case CMD_TOGGLE_PAWS:
+            app.settings.showPaws = !app.settings.showPaws;
+            app.settings.saveToRegistry();
             break;
         case CMD_TOGGLE_BADGES:
             app.settings.showKeyBadges = !app.settings.showKeyBadges;

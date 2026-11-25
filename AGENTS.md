@@ -57,7 +57,7 @@ GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时�
 ## 与上游的差异
 
 - Bundle ID 为 `pro.omnibox.xiaohei-pet`，开机自启的 LaunchAgent 同名，和 KuroCat 互不影响。
-- 关闭了上游的自动更新检查和应用内自更新（否则会下载 KuroCat 覆盖本应用），移除了皮肤导入的拖放入口。
+- 桌宠产物只包含小黑角色，移除了上游角色渲染、皮肤导入和应用内自更新。
 - macOS（`Sources/`）与 Windows（`windows/`）的应用统一使用小黑。`linux/` 保留上游实现，不参与桌宠发布。
 - 上游说明保留在 [README.kurocat.md](README.kurocat.md)、[README.kurocat.en.md](README.kurocat.en.md)，许可证见 [LICENSE](LICENSE)。
 

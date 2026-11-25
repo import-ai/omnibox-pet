@@ -68,7 +68,7 @@ public:
             drawMouse(g, physics, settings.keyboardTheme);
         }
         drawKeyboard(g, physics, settings.keyboardTheme, settings.eyeTheme, settings.showKeyLegends, settings.keyboardMarquee);
-        XiaoheiRenderer::drawPaws(g, physics);
+        if (settings.showPaws) XiaoheiRenderer::drawPaws(g, physics);
 
         // 9. Floating Keycap Badges (keyboard + mouse clicks)
         if (!physics.floatingKeycaps.empty()) {

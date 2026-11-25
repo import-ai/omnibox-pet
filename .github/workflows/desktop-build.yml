@@ -113,7 +113,7 @@ jobs:
           ln -s /Applications "$staging/Applications"
           hdiutil create -volname "桌宠小黑" -srcfolder "$staging" -fs HFS+ -format UDZO "$IMAGE_NAME"
 
-      - name: Notarize and staple the release disk image and app
+      - name: Notarize and staple the release disk image
         if: env.RELEASE_BUILD == '1'
         env:
           IMAGE_NAME: ${{ needs.prepare.outputs.macos }}.dmg
@@ -130,7 +130,7 @@ jobs:
           trap 'unlink "$key"' EXIT
           printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key"
 
-          codesign --sign "$XIAOHEI_SIGN_IDENTITY" --timestamp "$IMAGE_NAME"
+          codesign --sign "$XIAOHEI_SIGN_IDENTITY" --timestamp --identifier pro.omnibox.xiaohei-pet.dmg "$IMAGE_NAME"
           result=$(xcrun notarytool submit "$IMAGE_NAME" --key "$key" \
             --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" \
             --wait --timeout 25m --output-format json)
@@ -141,18 +141,9 @@ jobs:
               --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
             exit 1
           fi
-          # Apple issues tickets for both the disk image and the app inside it.
-          for target in "$IMAGE_NAME" "桌宠小黑.app"; do
-            xcrun stapler staple "$target"
-            xcrun stapler validate "$target"
-          done
+          xcrun stapler staple "$IMAGE_NAME"
+          xcrun stapler validate "$IMAGE_NAME"
           codesign --verify "$IMAGE_NAME"
-          codesign --verify --deep --strict "桌宠小黑.app"
-
-      - name: Package macOS app
-        env:
-          ARCHIVE_NAME: ${{ needs.prepare.outputs.macos }}.zip
-        run: ditto -c -k --sequesterRsrc --keepParent "桌宠小黑.app" "$ARCHIVE_NAME"
 
       - name: Render Xiaohei state sheet
         run: './桌宠小黑.app/Contents/MacOS/桌宠小黑 --render-xiaohei-preview xiaohei-states.png'
@@ -164,7 +155,6 @@ jobs:
           if-no-files-found: error
           path: |
             ${{ needs.prepare.outputs.macos }}.dmg
-            ${{ needs.prepare.outputs.macos }}.zip
             xiaohei-states.png
 
   build-windows:
@@ -228,6 +218,5 @@ jobs:
           generate_release_notes: true
           files: |
             dist/${{ needs.prepare.outputs.macos }}.dmg
-            dist/${{ needs.prepare.outputs.macos }}.zip
             dist/${{ needs.prepare.outputs.windows }}.zip
           fail_on_unmatched_files: true

@@ -755,7 +755,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let releasesURL = URL(string: "https://github.com/import-ai/omnibox-pet/releases")!
     private static let updateAppName = "桌宠小黑.app"
     private static let updateSigningRequirement = """
-    anchor apple generic and identifier "pro.omnibox.xiaohei-pet" and \
+    anchor apple generic and \
     certificate 1[field.1.2.840.113635.100.6.2.6] exists and \
     certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "SWWN7SR369"
     """
@@ -774,12 +774,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             AppDelegate.releasesURL.appendingPathComponent("tag").appendingPathComponent(tag_name)
         }
 
-        var archive: Asset? {
-            assets.first { $0.name == "omnibox-pet-\(tag_name)-macos-universal.zip" }
-                ?? assets.first { $0.name == "OmniBoxPet-macOS-universal.zip" }
+        var diskImage: Asset? {
+            assets.first { $0.name == "omnibox-pet-\(tag_name)-macos-universal.dmg" }
         }
 
-        func archiveURL(for asset: Asset) -> URL {
+        func downloadURL(for asset: Asset) -> URL {
             AppDelegate.releasesURL.appendingPathComponent("download").appendingPathComponent(tag_name)
                 .appendingPathComponent(asset.name)
         }
@@ -868,30 +867,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func performInAppUpdate() {
         guard !isUpdating, let release = availableUpdate else { return }
         let currentAppURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
-        guard let asset = release.archive, let digest = asset.digest, asset.size > 0,
+        guard let asset = release.diskImage, let digest = asset.digest, asset.size > 0,
               digest.range(of: #"^sha256:[0-9a-f]{64}$"#, options: .regularExpression) != nil,
               FileManager.default.isWritableFile(atPath: currentAppURL.deletingLastPathComponent().path) else {
             handleUpdateDownloadFailure()
             return
         }
         isUpdating = true
-        let request = URLRequest(url: release.archiveURL(for: asset), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
+        let request = URLRequest(url: release.downloadURL(for: asset), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
         URLSession.shared.downloadTask(with: request) { [weak self] tempURL, response, error in
             guard let self else { return }
             let fm = FileManager.default
             var workDir: URL?
             do {
                 guard error == nil, let tempURL, (response as? HTTPURLResponse)?.statusCode == 200,
-                      Self.matchesUpdateArchive(at: tempURL, size: asset.size, digest: digest) else {
+                      Self.matchesUpdateDownload(at: tempURL, size: asset.size, digest: digest) else {
                     throw CocoaError(.fileReadCorruptFile)
                 }
                 let directory = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask,
                                            appropriateFor: currentAppURL, create: true)
                 workDir = directory
-                let extractDir = directory.appendingPathComponent("extracted", isDirectory: true)
-                try fm.createDirectory(at: extractDir, withIntermediateDirectories: false)
-                try Self.runUpdateTool("/usr/bin/ditto", ["-x", "-k", tempURL.path, extractDir.path])
-                let newAppURL = extractDir.appendingPathComponent(Self.updateAppName, isDirectory: true)
+                let image = directory.appendingPathComponent(asset.name)
+                try fm.moveItem(at: tempURL, to: image)
+                let newAppURL = try Self.copyUpdateApp(from: image, into: directory)
                 guard try Self.verifyUpdateApp(at: newAppURL, version: String(release.tag_name.dropFirst())) else {
                     throw CocoaError(.fileReadCorruptFile)
                 }
@@ -905,7 +903,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }.resume()
     }
 
-    private static func matchesUpdateArchive(at url: URL, size: Int, digest: String) -> Bool {
+    private static func copyUpdateApp(from image: URL, into directory: URL) throws -> URL {
+        try runUpdateTool("/usr/bin/codesign", [
+            "--verify", "-R", "=\(updateSigningRequirement) and identifier \"pro.omnibox.xiaohei-pet.dmg\"", image.path
+        ])
+        let mount = directory.appendingPathComponent("mounted", isDirectory: true)
+        try runUpdateTool("/usr/bin/hdiutil", [
+            "attach", "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount.path, image.path
+        ])
+        defer { try? runUpdateTool("/usr/bin/hdiutil", ["detach", "-force", mount.path]) }
+
+        let source = mount.appendingPathComponent(updateAppName, isDirectory: true)
+        guard try source.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let destination = directory.appendingPathComponent(updateAppName, isDirectory: true)
+        try runUpdateTool("/usr/bin/ditto", [source.path, destination.path])
+        return destination
+    }
+
+    private static func matchesUpdateDownload(at url: URL, size: Int, digest: String) -> Bool {
         guard (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) == size,
               let bytes = try? Data(contentsOf: url, options: .mappedIfSafe), bytes.count == size else { return false }
         let actual = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
@@ -914,7 +931,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private static func verifyUpdateApp(at url: URL, version: String) throws -> Bool {
         try runUpdateTool("/usr/bin/codesign", [
-            "--verify", "--deep", "--strict", "--all-architectures", "-R", "=\(updateSigningRequirement)", url.path
+            "--verify", "--deep", "--strict", "--all-architectures",
+            "-R", "=\(updateSigningRequirement) and identifier \"pro.omnibox.xiaohei-pet\"", url.path
         ])
         return try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false
             && shortVersion(ofAppAt: url) == version

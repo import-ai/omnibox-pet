@@ -3,7 +3,7 @@ import CoreGraphics
 
 /// Draws Xiaohei, the head-only black cat of 小黑 OmniBox, in place of the KuroCat body.
 ///
-/// Identity rules (omnibox-art AGENTS.md): Xiaohei is only a head with two ears and two round eyes.
+/// Xiaohei's base design is a head with two ears and two round eyes.
 /// No nose, mouth, muzzle, whiskers, body, neck, tail, eyebrows or pupil highlights are ever drawn.
 /// Emotions use gaze, eye shape, tilt and external symbols only.
 ///

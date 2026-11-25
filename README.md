@@ -19,15 +19,8 @@ open XiaoheiPet.app
 
 ## 角色来源
 
-- 几何来自 omnibox-art 已选定的正面基准 [front V14](../omnibox-art/assets/ip/xiaohei/front/v14/README.md)：耳朵、头部、眼白、瞳孔四部分路径原样使用。
-- `Sources/XiaoheiArt.swift` 由脚本生成，不手改：
-
-  ```bash
-  python3 scripts/generate-xiaohei-art.py ../omnibox-art/assets/ip/xiaohei/front/v14/xiaohei-front-v14.svg
-  python3 scripts/generate-xiaohei-art.py <同一 SVG> --check   # 校验是否与源 SVG 一致
-  ```
-
-- App 图标：`python3 scripts/make-app-icon.py ../omnibox-art/assets/ip/xiaohei/front/v14/xiaohei-front-v14.png`，小黑头部 + 品牌蓝 `#3B82F6` 圆角底。
+- 耳朵、头部、眼白和瞳孔的路径取自小黑的正面造型。项目已包含生成后的 `Sources/XiaoheiArt.swift`，可直接构建。
+- App 图标由小黑头部和品牌蓝（`#3B82F6`）圆角底组成。
 - 角色色：猫头与瞳孔 `#171717`，眼白 `#FEF6EC`。
 
 ## 身份约束与适配
@@ -37,7 +30,7 @@ open XiaoheiPet.app
 - **探头**：没有桌子。小黑直接躲在键盘后面，只露出脑袋上半截，下半截被键盘挡住。
 - **悬浮小爪**：两只不和头相连的小爪浮在键盘和鼠标上，按键、握鼠标，不画手臂。
 
-小爪与「没有四肢」的基础设定冲突，是项目所有者对这个桌宠的明确要求。按 omnibox-art 的优先级（用户本次明确要求 > 已确认的角色规范），只在桌宠里使用，**不**改动小黑的基础设定，也不应被其他资产沿用。菜单里关闭「显示悬浮小爪」后只剩探头的脑袋。爪子造型参考「记笔记」「赶工」表情包：黑色圆团，浅色描边，前缘两道趾缝。
+悬浮小爪是桌宠专用的造型。菜单里关闭「显示悬浮小爪」后只剩探头的脑袋。爪子造型参考「记笔记」「赶工」表情包：黑色圆团，浅色描边，前缘两道趾缝。
 
 | KuroCat 原玩法 | 小黑桌宠 |
 | --- | --- |

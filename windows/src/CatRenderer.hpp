@@ -20,10 +20,11 @@ class CatRenderer {
 public:
     static constexpr float RadToDeg = 57.2957795f;
 
-    static CatHitZone hitTest(Pt p, const CatPhysics& physics) {
-        const Pt head = XiaoheiRenderer::headCenter(physics);
-        const float dx = (p.x - head.x) / 72.0f;
-        const float dy = (p.y - head.y) / 68.0f;
+    static CatHitZone hitTest(Pt p, const CatPhysics& physics, bool showPaws) {
+        const Pt head = XiaoheiRenderer::headCenter(physics, showPaws);
+        const float dx = (p.x - head.x) / (252.0f * XiaoheiRenderer::HeadScale);
+        const float headMidY = head.y + (371.0f - XiaoheiRenderer::HeadPivotY) * XiaoheiRenderer::HeadScale;
+        const float dy = (p.y - headMidY) / (228.0f * XiaoheiRenderer::HeadScale);
         if (p.y <= XiaoheiRenderer::keyboardEdge(p.x) && dx * dx + dy * dy <= 1.0f) return CatHitZone::Head;
         if (p.x >= 103.0f && p.x <= 286.0f && p.y >= XiaoheiRenderer::keyboardEdge(p.x) && p.y <= 292.0f) {
             return CatHitZone::Body;
@@ -56,27 +57,28 @@ public:
             g.ScaleTransform(-1.0f, 1.0f);
         }
 
-        XiaoheiRenderer::drawHead(g, physics);
+        XiaoheiRenderer::drawHead(g, physics, settings.showPaws);
+        const bool heldStylus = physics.isTabletActive && settings.showPaws && physics.leftPawOnMouse
+            && physics.scruffDrag.value <= 0.25f && physics.dizzyIntensity.value <= 0.35f && physics.lieIntensity.value <= 0.45f;
         if (physics.isTabletActive) {
             drawTablet(g, physics, settings.keyboardTheme, settings.eyeTheme);
-            if (physics.leftPawOnMouse) {
-                drawHeldStylus(g, physics, settings.keyboardTheme, settings.eyeTheme);
-            } else {
+            if (!heldStylus) {
                 drawParkedStylus(g, settings.keyboardTheme, settings.eyeTheme);
             }
         } else {
             drawMouse(g, physics, settings.keyboardTheme);
         }
-        drawKeyboard(g, physics, settings.keyboardTheme, settings.eyeTheme, settings.showKeyLegends, settings.keyboardMarquee);
+        drawKeyboard(g, physics, settings);
         if (settings.showPaws) XiaoheiRenderer::drawPaws(g, physics);
+        if (heldStylus) drawHeldStylus(g, physics, settings.keyboardTheme, settings.eyeTheme);
 
         // 9. Floating Keycap Badges (keyboard + mouse clicks)
         if (!physics.floatingKeycaps.empty()) {
-            drawFloatingKeycaps(g, physics);
+            drawFloatingKeycaps(g, physics, settings.flipHorizontal);
         }
 
         // 10. Subtle Petting Sparkles & Sleep Z
-        drawSparkles(g, physics, settings.eyeTheme);
+        drawSparkles(g, physics, settings.eyeTheme, settings.flipHorizontal);
 
         g.Restore(flipState);
 
@@ -511,8 +513,11 @@ private:
         }
     }
 
-    static void drawKeyboard(Gdiplus::Graphics& g, const CatPhysics& physics, KeyboardTheme theme, EyeColorTheme eyeTheme, bool showLegends, bool marquee) {
+    static void drawKeyboard(Gdiplus::Graphics& g, const CatPhysics& physics, const CatSettings& settings) {
         using namespace Gdiplus;
+        const auto theme = settings.keyboardTheme;
+        const auto eyeTheme = settings.eyeTheme;
+        const bool marquee = settings.keyboardMarquee;
         Pt tl = KeyboardLayout::screenQuadPoint(-0.012f, -0.04f);
         Pt tr = KeyboardLayout::screenQuadPoint(1.012f, -0.04f);
         Pt bl = KeyboardLayout::screenQuadPoint(-0.016f, 1.04f);
@@ -669,7 +674,7 @@ private:
                 g.FillPath(&pb, &bp);
             }
 
-            if (showLegends) {
+            if (settings.showKeyLegends) {
                 bool isSpace = (cap.key == PhysicalKey::Space);
                 std::wstring legend = isSpace ? std::wstring(L"space") : keycapLegend(cap.key);
                 if (!legend.empty()) {
@@ -694,6 +699,7 @@ private:
                     // The keyboard is laid out 180° to face the cat, so the legends must be too
                     // (upside-down to the viewer, upright from the cat's seat). +3° follows the deck slope.
                     g.RotateTransform(180.0f + 3.0f);
+                    if (settings.flipHorizontal) g.ScaleTransform(-1.0f, 1.0f);
                     g.DrawString(legend.c_str(), -1, &kf, RectF(-14.0f, -7.0f, 28.0f, 14.0f), &kbSF, &tb);
                     g.Restore(ks);
                 }
@@ -716,7 +722,7 @@ private:
         }
     }
 
-    static void drawFloatingKeycaps(Gdiplus::Graphics& g, const CatPhysics& physics) {
+    static void drawFloatingKeycaps(Gdiplus::Graphics& g, const CatPhysics& physics, bool flipped) {
         using namespace Gdiplus;
         FontFamily ff(L"Segoe UI");
         StringFormat sf;
@@ -744,7 +750,7 @@ private:
             GraphicsState st = g.Save();
             g.TranslateTransform(b.position.x, b.position.y);
             g.RotateTransform(b.rotation * RadToDeg);
-            g.ScaleTransform(scale, scale);
+            g.ScaleTransform(flipped ? -scale : scale, scale);
 
             GraphicsPath basePath;
             addRoundedRect(basePath, -w * 0.5f, -h * 0.5f + 2.5f, w, h, 5.5f);
@@ -768,7 +774,7 @@ private:
 
     // MARK: - Petting Sparkles & Sleep Z
 
-    static void drawSparkles(Gdiplus::Graphics& g, const CatPhysics& physics, EyeColorTheme eyeTheme) {
+    static void drawSparkles(Gdiplus::Graphics& g, const CatPhysics& physics, EyeColorTheme eyeTheme, bool flipped) {
         using namespace Gdiplus;
         Color baseCol = eyePrimary(eyeTheme);
         FontFamily ff(L"Segoe UI");
@@ -782,7 +788,11 @@ private:
             if (sp.isSleepZ) {
                 Font f(&ff, 11.0f + p * 3.0f, FontStyleBold, UnitPixel);
                 SolidBrush sb(c);
-                g.DrawString(L"z", -1, &f, PointF(sp.position.x, sp.position.y), &sb);
+                const GraphicsState text = g.Save();
+                g.TranslateTransform(sp.position.x, sp.position.y);
+                if (flipped) g.ScaleTransform(-1.0f, 1.0f);
+                g.DrawString(L"z", -1, &f, PointF(0.0f, 0.0f), &sb);
+                g.Restore(text);
             } else {
                 float r = 3.5f + p * 1.5f;
                 GraphicsState st = g.Save();

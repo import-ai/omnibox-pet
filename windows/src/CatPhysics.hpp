@@ -591,9 +591,11 @@ public:
             rightKey = recentRightKey_;
         }
 
-        // Subtle mini-mouse movement
+        // Convert screen movement to canvas coordinates before the renderer mirrors it.
+        const float screenToCanvasX = settings.flipHorizontal ? -1.0f : 1.0f;
+        const float canvasMouseDx = engine.mouseVelocity.x * screenToCanvasX;
         mouseOffset.setTarget({
-            std::clamp(engine.mouseVelocity.x * 0.0045f, -5.5f, 5.5f),
+            std::clamp(canvasMouseDx * 0.0045f, -5.5f, 5.5f),
             std::clamp(engine.mouseVelocity.y * 0.0045f, -4.5f, 4.5f)
         });
         mouseOffset.step(dt, 120.0f, 16.0f);
@@ -612,11 +614,12 @@ public:
             float mh = std::max(1.0f, (float)(monRect.bottom - monRect.top));
             float nx = std::clamp((float)(engine.lastCursorPos.x - monRect.left) / mw, 0.0f, 1.0f);
             float ny = std::clamp((float)(engine.lastCursorPos.y - monRect.top) / mh, 0.0f, 1.0f);
-            tabletNib.setTarget(tabletQuadPoint(0.25f + nx * 0.64f, 0.16f + ny * 0.68f));
+            const float canvasX = settings.flipHorizontal ? 1.0f - nx : nx;
+            tabletNib.setTarget(tabletQuadPoint(0.25f + canvasX * 0.64f, 0.16f + ny * 0.68f));
             tabletNib.step(dt, 240.0f, 20.0f);
             tabletPenPress.target = engine.leftMouseDown ? 0.88f : 0.0f;
             tabletPenPress.step(dt, 360.0f, 22.0f);
-            tabletPenTilt.target = std::clamp(engine.mouseVelocity.x * 0.00018f, -0.22f, 0.22f);
+            tabletPenTilt.target = std::clamp(canvasMouseDx * 0.00018f, -0.22f, 0.22f);
             tabletPenTilt.step(dt, 120.0f, 14.0f);
         } else {
             tabletPenPress.target = 0.0f;
@@ -628,11 +631,11 @@ public:
         }
 
         if (scruff > 0.25f) {
-            float sway = scruffSwing.value * 28.0f;
-            float kick = std::sin(time * 9.0f) * 3.5f * scruff;
-            leftPaw.setTarget({ SeatAnchor.x - 16.0f + sway, 198.0f + kick });
-            rightPaw.setTarget({ SeatAnchor.x + 16.0f + sway, 200.0f - kick });
-            hindFoot.setTarget({ SeatAnchor.x + 12.0f + sway * 1.2f, 224.0f });
+            // The head lifts away while the detached paws stay over the far row.
+            const float sway = scruffSwing.value * 0.15f;
+            leftPaw.setTarget(KeyboardLayout::screenQuadPoint(0.34f + sway, 0.13f));
+            rightPaw.setTarget(KeyboardLayout::screenQuadPoint(0.53f + sway, 0.13f));
+            hindFoot.setTarget(HindFootRest);
             hindFootActive.target = 0.0f;
             leftPawTyping = false;
             rightPawTyping = false;
@@ -769,10 +772,11 @@ public:
 
         float winW = std::max(1.0f, (float)(windowRect.right - windowRect.left));
         float winScale = std::max(0.2f, winW / CanvasWidth);
-        float headScreenX = (float)windowRect.left + eyeOrigin.x * winScale;
+        const float headCanvasX = settings.flipHorizontal ? CanvasWidth - eyeOrigin.x : eyeOrigin.x;
+        float headScreenX = (float)windowRect.left + headCanvasX * winScale;
         float headScreenY = (float)windowRect.top  + eyeOrigin.y * winScale;
 
-        float curDx = ((float)engine.lastCursorPos.x - headScreenX) / 290.0f;
+        float curDx = ((float)engine.lastCursorPos.x - headScreenX) * screenToCanvasX / 290.0f;
         float curDy = ((float)engine.lastCursorPos.y - headScreenY) / 260.0f;
         float curMag = std::hypot(curDx, curDy);
         float clampedCur = std::min(1.0f, curMag);

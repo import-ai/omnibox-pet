@@ -10,6 +10,16 @@ using namespace Gdiplus;
 
 inline const Color ink(255, 23, 23, 23);
 inline const Color cream(255, 254, 246, 236);
+inline constexpr float HeadScale = 0.30f;
+inline constexpr float HeadPivotX = 320.0f;
+inline constexpr float HeadPivotY = 413.0f;
+inline constexpr float HeadChinY = 594.0f;
+// The SVG head outline and its sticker rim fit inside this radius, excluding the ears.
+inline constexpr float HeadRadius = 248.0f + 7.5f;
+inline constexpr float RadToDeg = 57.2957795f;
+
+inline const Pt keyboardLeft = KeyboardLayout::screenQuadPoint(-0.012f, -0.04f);
+inline const Pt keyboardRight = KeyboardLayout::screenQuadPoint(1.012f, -0.04f);
 
 // The shared artwork uses absolute M, L, C and Z path commands.
 inline void addSvgPath(GraphicsPath& path, const char* data) {
@@ -52,114 +62,279 @@ inline void addSvgPath(GraphicsPath& path, const char* data) {
     }
 }
 
-struct Art {
-    GraphicsPath silhouette{FillModeWinding};
-    GraphicsPath eyeWhite;
+struct EyeArt {
+    GraphicsPath white;
     GraphicsPath pupil;
-
-    Art() {
-        addSvgPath(silhouette, XiaoheiArt::earLeft);
-        addSvgPath(silhouette, XiaoheiArt::earRight);
-        addSvgPath(silhouette, XiaoheiArt::head);
-        addSvgPath(eyeWhite, XiaoheiArt::eyeWhite);
-        addSvgPath(pupil, XiaoheiArt::pupil);
-        Matrix eyeTransform(XiaoheiArt::eyeTransform[0], XiaoheiArt::eyeTransform[1],
-                            XiaoheiArt::eyeTransform[2], XiaoheiArt::eyeTransform[3],
-                            XiaoheiArt::eyeTransform[4], XiaoheiArt::eyeTransform[5]);
-        eyeWhite.Transform(&eyeTransform);
-        pupil.Transform(&eyeTransform);
-    }
 };
 
 inline float keyboardEdge(float x) {
-    const Pt left = KeyboardLayout::screenQuadPoint(0.0f, -0.04f);
-    const Pt right = KeyboardLayout::screenQuadPoint(1.0f, -0.04f);
-    return left.y + (right.y - left.y) * (x - left.x) / (right.x - left.x);
+    return keyboardLeft.y + (keyboardRight.y - keyboardLeft.y) * (x - keyboardLeft.x) / (keyboardRight.x - keyboardLeft.x);
 }
 
-inline Pt headCenter(const CatPhysics& p) {
-    return {
-        CatPhysics::SeatAnchor.x + p.bodyShiftX.value + p.bodyTilt.value * 30.0f + p.headYaw.value * 4.0f,
-        207.0f + p.headOffsetY.value * 0.8f + p.headPitch.value * 3.0f + p.sleepiness * 6.0f
-            + p.lieIntensity.value * 8.0f + p.dizzyIntensity.value * 10.0f
-            + p.hindFootActive.value * 8.0f - p.scruffDrag.value * 24.0f
-    };
+inline float clampUnit(float value) {
+    return std::clamp(value, 0.0f, 1.0f);
 }
 
-inline void drawFace(Graphics& g, const CatPhysics& p, float outlineWidth) {
-    Art art;
-    SolidBrush dark(ink), white(cream);
-    if (outlineWidth > 0.0f) {
-        Pen rim(cream, outlineWidth);
-        rim.SetLineJoin(LineJoinRound);
-        g.DrawPath(&rim, &art.silhouette);
+inline float smoothUnit(float value) {
+    const float t = clampUnit(value);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+inline float headRotation(const CatPhysics& p, Pt center) {
+    const float dizzy = clampUnit(p.dizzyIntensity.value);
+    const float fall = smoothUnit((dizzy - 0.5f) / 0.5f);
+    const float wobble = clampUnit((dizzy - 0.12f) / 0.38f) * (1.0f - fall);
+    const float bonkDirection = p.hindFoot.x.value >= center.x ? 1.0f : -1.0f;
+    return p.headTilt.value + p.bodyTilt.value * 0.5f - smoothUnit(p.lieIntensity.value) * 0.12f
+        + p.scruffSwing.value * 0.6f + clampUnit(p.hindFootActive.value) * 0.12f * bonkDirection
+        + std::sin(p.time * 9.5f) * 0.16f * wobble - fall * 0.30f;
+}
+
+struct HeadPose {
+    Pt center;
+    float rotation, sx, sy;
+};
+
+inline HeadPose headPose(const CatPhysics& p, bool showPaws) {
+    const float x = CatPhysics::SeatAnchor.x + p.bodyShiftX.value + p.bodyTilt.value * 30.0f + p.headYaw.value * 4.0f;
+    float y = 208.0f + p.headOffsetY.value * 0.8f + p.headPitch.value * 3.0f + std::sin(p.time * 2.1f) * (1.6f * 1.4f)
+        + clampUnit(p.huntIntensity.value) * 5.0f + p.sleepiness * 6.0f + smoothUnit(p.lieIntensity.value) * 8.0f
+        + smoothUnit((p.dizzyIntensity.value - 0.5f) / 0.5f) * 14.0f
+        - clampUnit(p.scruffDrag.value) * 24.0f + clampUnit(p.hindFootActive.value) * 8.0f;
+    if (!showPaws) {
+        float keyDistance = p.rightPaw.y.value - CatPhysics::RightPawRest.y;
+        if (!p.leftPawOnMouse) keyDistance = std::max(keyDistance, p.leftPaw.y.value - CatPhysics::LeftPawRest.y);
+        y += std::clamp(keyDistance * 0.25f, 0.0f, 8.0f);
     }
-    g.FillPath(&dark, &art.silhouette);
-
-    const Pt gaze = p.eyeGaze.point();
-    for (const bool mirrored : {false, true}) {
-        const GraphicsState eye = g.Save();
-        if (mirrored) {
-            g.TranslateTransform(640.0f, 0.0f);
-            g.ScaleTransform(-1.0f, 1.0f);
-        }
-        g.FillPath(&white, &art.eyeWhite);
-        g.SetClip(&art.eyeWhite, CombineModeIntersect);
-        RectF bounds;
-        art.pupil.GetBounds(&bounds);
-        const float x = bounds.X + bounds.Width * 0.5f;
-        const float y = bounds.Y + bounds.Height * 0.5f;
-        if (p.effectiveEyeClosure() > 0.8f || p.isHappyClosedEyes()) {
-            Pen closed(ink, 11.0f);
-            closed.SetStartCap(LineCapRound);
-            closed.SetEndCap(LineCapRound);
-            const float bend = p.isHappyClosedEyes() ? -18.0f : 13.0f;
-            g.DrawBezier(&closed, PointF(x-22,y), PointF(x-13,y+bend), PointF(x+13,y+bend), PointF(x+22,y));
-        } else {
-            const float scale = std::clamp(p.pupilScale.value, 0.8f, 1.35f);
-            const float anger = p.angerIntensity.value;
-            if (anger > 0.25f) {
-                g.SetClip(RectF(x-64.0f, y-18.0f+anger*16.0f, 128.0f, 90.0f), CombineModeIntersect);
-            }
-            g.TranslateTransform(x + gaze.x * (mirrored ? -13.0f : 13.0f), y + gaze.y * 11.0f);
-            g.ScaleTransform(scale, scale);
-            g.TranslateTransform(-x, -y);
-            g.FillPath(&dark, &art.pupil);
-        }
-        g.Restore(eye);
-    }
+    const float rotation = headRotation(p, {x, y});
+    const float squash = 1.0f - p.bodySquash.value;
+    const float sx = 1.0f + squash * 0.25f, sy = 1.0f - squash * 0.45f;
+    const float cosRoll = std::cos(rotation), sinRoll = std::sin(rotation);
+    const float yaw = std::clamp(p.headYaw.value, -1.0f, 1.0f);
+    // Keep the posed outline behind the keyboard's actual far corners, even during a lean.
+    const float yawShift = yaw * 8.0f * HeadScale * sx;
+    const float chinOffset = (HeadChinY - HeadPivotY) * HeadScale * (1.0f - sy);
+    const float outlineOffset = yawShift * cosRoll - chinOffset * sinRoll;
+    const float halfWidth = HeadRadius * HeadScale * std::hypot(sx * cosRoll, sy * sinRoll);
+    const float deckCenter = (keyboardLeft.x + keyboardRight.x) * 0.5f;
+    const float room = std::max(0.0f, (keyboardRight.x - keyboardLeft.x) * 0.5f - halfWidth);
+    const float outlineX = std::clamp(x + outlineOffset, deckCenter - room, deckCenter + room);
+    return {{outlineX - outlineOffset, y}, rotation, sx, sy};
 }
 
-inline void drawHead(Graphics& g, const CatPhysics& p) {
+inline Pt headCenter(const CatPhysics& p, bool showPaws = true) {
+    return headPose(p, showPaws).center;
+}
+
+inline void poseEar(GraphicsPath& ear, const char* path, float side, float yaw, float pitch, float headShiftX,
+                    const CatPhysics& p) {
+    addSvgPath(ear, path);
+    const float rootX = HeadPivotX + side * 150.0f;
+    constexpr float rootY = 268.0f;
+    const float fold = std::clamp(p.earFold.value, -0.3f, 1.0f);
+    Matrix pose;
+    pose.Translate(rootX + yaw * 30.0f, rootY - pitch * 10.0f);
+    pose.Rotate((side * fold * 0.32f + p.earTwitch.value * 0.05f) * RadToDeg);
+    pose.Scale(1.0f - 0.22f * std::max(0.0f, side * yaw) + 0.06f * std::max(0.0f, -side * yaw),
+               1.0f - 0.10f * std::max(0.0f, fold));
+    pose.Translate(-rootX, -rootY);
+
+    // Keep the SVG's sloped ear base attached to the head while the tip follows the pose.
+    const PointF tip(HeadPivotX + side * 197.87f, 148.795f);
+    PointF posedTip = tip;
+    pose.TransformPoints(&posedTip, 1);
+    const float slope = side * (309.783f - 238.107f) / (538.233f - 400.239f);
+    const float intercept = 238.107f - slope * (HeadPivotX + side * 80.239f);
+    const float tipHeight = slope * tip.X + intercept - tip.Y;
+    const float dx = (posedTip.X - tip.X - headShiftX) / tipHeight;
+    const float dy = (posedTip.Y - tip.Y) / tipHeight;
+    Matrix anchored(1.0f + slope * dx, slope * dy, -dx, 1.0f - dy, headShiftX + intercept * dx, intercept * dy);
+    ear.Transform(&anchored);
+}
+
+inline void drawEye(Graphics& g, const EyeArt& eye, const CatPhysics& p, float side, float yaw, float pitch) {
+    RectF whiteBounds, pupilBounds;
+    eye.white.GetBounds(&whiteBounds);
+    eye.pupil.GetBounds(&pupilBounds);
+    const float x = whiteBounds.X + whiteBounds.Width * 0.5f;
+    const float y = whiteBounds.Y + whiteBounds.Height * 0.5f;
+    const float radius = (whiteBounds.Width + whiteBounds.Height) * 0.25f;
+    const float hunt = clampUnit(p.huntIntensity.value);
+
+    // Use the same spherical projection as macOS so the far eye foreshortens as the face turns.
+    constexpr float rx = 250.0f, ry = 230.0f;
+    const float neutralYaw = std::asin(std::clamp((x - HeadPivotX) / rx, -0.95f, 0.95f));
+    const float neutralPitch = std::asin(std::clamp((y - HeadPivotY) / ry, -0.95f, 0.95f));
+    const float longitude = neutralYaw + yaw * 0.32f;
+    const float latitude = neutralPitch + pitch * (pitch > 0.0f ? 0.12f : 0.26f);
+    const float wide = 1.0f + hunt * 0.07f;
     const GraphicsState state = g.Save();
-    const PointF points[] = {{0, 0}, {360, 0}, {360, keyboardEdge(360)}, {0, keyboardEdge(0)}};
+    g.TranslateTransform(HeadPivotX + rx * std::sin(longitude) + yaw * 8.0f, HeadPivotY + ry * std::sin(latitude));
+    g.ScaleTransform(std::clamp(std::cos(longitude) / std::cos(neutralYaw), 0.35f, 1.15f) * wide,
+                     std::clamp(std::cos(latitude) / std::cos(neutralPitch), 0.6f, 1.1f) * wide);
+    g.TranslateTransform(-x, -y);
+
+    SolidBrush white(cream), dark(ink);
+    g.FillPath(&white, &eye.white);
+    g.SetClip(&eye.white, CombineModeIntersect);
+    const float closure = p.effectiveEyeClosure();
+    const bool happy = p.isHappyClosedEyes();
+    const bool squeezed = p.scruffDrag.value > 0.35f;
+    if (squeezed || closure > 0.86f || happy) {
+        Pen closed(ink, 18.0f);
+        closed.SetStartCap(LineCapRound);
+        closed.SetEndCap(LineCapRound);
+        if (squeezed) {
+            const PointF points[] = {
+                {x + side * 0.45f * radius, y - 0.42f * radius},
+                {x - side * 0.42f * radius, y},
+                {x + side * 0.45f * radius, y + 0.42f * radius}
+            };
+            closed.SetLineJoin(LineJoinRound);
+            g.DrawLines(&closed, points, 3);
+        } else {
+            const float halfWidth = radius * (happy ? 0.62f : 0.52f);
+            const float lineY = y + radius * (happy ? 0.22f : 0.48f);
+            const float bend = radius * (happy ? -0.77f : 0.32f) * (2.0f / 3.0f);
+            g.DrawBezier(&closed, PointF(x - halfWidth, lineY), PointF(x - halfWidth / 3.0f, lineY + bend),
+                         PointF(x + halfWidth / 3.0f, lineY + bend), PointF(x + halfWidth, lineY));
+        }
+    } else {
+        const float pupilScale = std::clamp(p.pupilScale.value, 0.8f, 1.3f) * (1.0f + hunt * 0.30f);
+        const float pupilRadius = (pupilBounds.Width + pupilBounds.Height) * 0.25f;
+        const Pt gaze = p.eyeGaze.point();
+        const float travel = std::max(0.0f, (radius - pupilRadius * pupilScale) * 0.85f)
+            / std::max(1.0f, std::hypot(gaze.x, gaze.y));
+        const float px = pupilBounds.X + pupilBounds.Width * 0.5f;
+        const float py = pupilBounds.Y + pupilBounds.Height * 0.5f;
+        const GraphicsState pupilState = g.Save();
+        g.TranslateTransform(px + gaze.x * travel, py + gaze.y * travel * 0.9f);
+        g.ScaleTransform(pupilScale, pupilScale);
+        g.TranslateTransform(-px, -py);
+        g.FillPath(&dark, &eye.pupil);
+        g.Restore(pupilState);
+    }
+    const float anger = clampUnit((p.angerIntensity.value - 0.15f) / 0.6f);
+    const float lid = std::max(closure, anger * 0.42f);
+    if (!squeezed && !happy && lid > 0.01f) {
+        const float edge = whiteBounds.Y + std::min(lid, 0.64f) * whiteBounds.Height;
+        const float left = whiteBounds.X, right = whiteBounds.GetRight();
+        const float inner = edge + anger * 0.20f * radius, outer = edge - anger * 0.08f * radius;
+        const PointF lidPath[] = {
+            {left, whiteBounds.Y - 1.0f}, {right, whiteBounds.Y - 1.0f},
+            {right, side > 0.0f ? outer : inner}, {left, side > 0.0f ? inner : outer}
+        };
+        g.FillPolygon(&dark, lidPath, 4);
+    }
+    g.Restore(state);
+}
+
+inline void drawAngerMark(Graphics& g, const CatPhysics& p, float yaw) {
+    const float intensity = clampUnit((p.angerIntensity.value - 0.25f) / 0.35f);
+    if (intensity <= 0.0f) return;
+
+    const GraphicsState state = g.Save();
+    const float pulse = (1.75f + std::sin(p.time * 14.0f) * 0.12f) / HeadScale;
+    g.TranslateTransform(615.0f + yaw * 20.0f, 230.0f);
+    g.ScaleTransform(pulse, pulse);
+
+    Pen mark(Color(static_cast<BYTE>(intensity * 255.0f), 255, 41, 61), 2.2f);
+    mark.SetStartCap(LineCapRound);
+    mark.SetEndCap(LineCapRound);
+    constexpr float inner = 2.6f, outer = 6.8f;
+    constexpr float control = inner + (outer - inner) / 3.0f;
+    constexpr Pt sides[] = {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+    for (const Pt side : sides) {
+        g.DrawBezier(&mark, PointF(side.x * outer, side.y * inner), PointF(side.x * control, side.y * inner),
+                     PointF(side.x * inner, side.y * control), PointF(side.x * inner, side.y * outer));
+    }
+    g.Restore(state);
+}
+
+inline void drawHead(Graphics& g, const CatPhysics& p, bool showPaws) {
+    const GraphicsState state = g.Save();
+    constexpr float width = CatPhysics::CanvasWidth;
+    const PointF points[] = {{0, 0}, {width, 0}, {width, keyboardEdge(width)}, {0, keyboardEdge(0)}};
     GraphicsPath visibleHead;
     visibleHead.AddPolygon(points, 4);
     g.SetClip(&visibleHead, CombineModeIntersect);
-    const Pt head = headCenter(p);
-    g.TranslateTransform(head.x, head.y);
-    g.RotateTransform(p.headTilt.value * 57.29578f);
-    g.ScaleTransform(0.30f * (1.0f - 0.10f * std::abs(p.headYaw.value)), 0.30f);
-    g.TranslateTransform(-320.0f, -413.0f);
-    drawFace(g, p, 8.0f);
+    const auto [center, rotation, sx, sy] = headPose(p, showPaws);
+    g.TranslateTransform(center.x, center.y);
+    g.RotateTransform(rotation * RadToDeg);
+    g.TranslateTransform(0.0f, (HeadChinY - HeadPivotY) * HeadScale);
+    g.ScaleTransform(HeadScale * sx, HeadScale * sy);
+    g.TranslateTransform(-HeadPivotX, -HeadChinY);
+
+    const float yaw = std::clamp(p.headYaw.value, -1.0f, 1.0f);
+    const float pitch = std::clamp(p.headPitch.value, -1.0f, 1.0f);
+    const float headShiftX = yaw * 8.0f;
+    GraphicsPath leftEar, rightEar, head;
+    poseEar(leftEar, XiaoheiArt::earLeft, -1.0f, yaw, pitch, headShiftX, p);
+    poseEar(rightEar, XiaoheiArt::earRight, 1.0f, yaw, pitch, headShiftX, p);
+    addSvgPath(head, XiaoheiArt::head);
+    Matrix headShift(1.0f, 0.0f, 0.0f, 1.0f, headShiftX, 0.0f);
+    head.Transform(&headShift);
+
+    Pen rim(Color(235, 254, 246, 236), 15.0f);
+    rim.SetLineJoin(LineJoinRound);
+    SolidBrush dark(ink);
+    for (auto* part : {&leftEar, &rightEar, &head}) g.DrawPath(&rim, part);
+    for (auto* part : {&leftEar, &rightEar, &head}) g.FillPath(&dark, part);
+
+    EyeArt left, right;
+    addSvgPath(right.white, XiaoheiArt::eyeWhite);
+    addSvgPath(right.pupil, XiaoheiArt::pupil);
+    const auto& t = XiaoheiArt::eyeTransform;
+    Matrix eyeTransform(t[0], t[1], t[2], t[3], t[4], t[5]);
+    right.white.Transform(&eyeTransform);
+    right.pupil.Transform(&eyeTransform);
+    left.white.AddPath(&right.white, FALSE);
+    left.pupil.AddPath(&right.pupil, FALSE);
+    Matrix mirror(-1.0f, 0.0f, 0.0f, 1.0f, 2.0f * HeadPivotX, 0.0f);
+    left.white.Transform(&mirror);
+    left.pupil.Transform(&mirror);
+    drawEye(g, left, p, -1.0f, yaw, pitch);
+    drawEye(g, right, p, 1.0f, yaw, pitch);
+    drawAngerMark(g, p, yaw);
     g.Restore(state);
 }
 
 inline void drawPaws(Graphics& g, const CatPhysics& p) {
     const Pt head = headCenter(p);
+    const float lie = smoothUnit(p.lieIntensity.value);
     const Pt paws[] = {p.leftPaw.point(), p.rightPaw.point()};
     const Pt rest[] = {CatPhysics::LeftPawRest, CatPhysics::RightPawRest};
+
+    GraphicsPath paw;
+    paw.AddBezier(PointF(-10.5f, 2.0f), PointF(-10.5f, -10.5f), PointF(10.5f, -10.5f), PointF(10.5f, 2.0f));
+    paw.AddBezier(PointF(10.5f, 2.0f), PointF(9.5f, 8.8f), PointF(-9.5f, 8.8f), PointF(-10.5f, 2.0f));
+    paw.CloseFigure();
     SolidBrush fill(ink);
-    Pen outline(cream, 1.4f);
+    SolidBrush shadow(Color(static_cast<BYTE>(255.0f * 0.16f * (1.0f - lie)), 23, 23, 23));
+    Pen outline(Color(242, 254, 246, 236), 2.6f);
+    Pen toes(Color(230, 254, 246, 236), 1.2f);
+    toes.SetStartCap(LineCapRound);
+    toes.SetEndCap(LineCapRound);
+
     for (int i = 0; i < 2; ++i) {
         const float side = i == 0 ? -1.0f : 1.0f;
-        const float idle = 1.0f - std::clamp(std::hypot(paws[i].x-rest[i].x, paws[i].y-rest[i].y)/12.0f, 0.0f, 1.0f);
+        const float resting = 1.0f - clampUnit(std::hypot(paws[i].x - rest[i].x, paws[i].y - rest[i].y) / 12.0f);
         const float idleX = head.x + side * 46.0f;
-        const float x = paws[i].x + (idleX-paws[i].x)*idle;
-        const float idleY = keyboardEdge(idleX) + 13.0f + std::sin(p.time*2.1f + side)*1.3f;
-        const float y = paws[i].y + (idleY-paws[i].y)*idle;
-        g.FillEllipse(&fill, x-9.0f, y-6.0f, 18.0f, 12.0f);
-        g.DrawEllipse(&outline, x-9.0f, y-6.0f, 18.0f, 12.0f);
+        const float x = paws[i].x + (idleX - paws[i].x) * resting;
+        const float y = paws[i].y + (keyboardEdge(idleX) + 14.0f - paws[i].y) * resting;
+        const float liftedY = y - (1.5f + std::sin(p.time * 2.1f + side * 0.9f) * 1.3f) * resting;
+        const float tuckX = head.x + side * 44.0f;
+        const float tuckY = keyboardEdge(tuckX) + 8.0f;
+        g.FillEllipse(&shadow, x - 8.0f, y - 1.0f, 16.0f, 5.0f);
+
+        const GraphicsState state = g.Save();
+        g.TranslateTransform(x + (tuckX - x) * lie, liftedY + (tuckY - liftedY) * lie - 6.5f);
+        g.RotateTransform((side * 0.16f + p.headTilt.value * 0.3f) * RadToDeg);
+        g.DrawPath(&outline, &paw);
+        g.FillPath(&fill, &paw);
+        g.DrawLine(&toes, -3.6f, 7.0f, -3.1f, 3.4f);
+        g.DrawLine(&toes, 3.6f, 7.0f, 3.1f, 3.4f);
+        g.Restore(state);
     }
 }
 }

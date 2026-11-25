@@ -21,6 +21,8 @@ enum XiaoheiRenderer {
     /// Head pivot in SVG space (horizontal centre, vertical centre of the head without ears).
     private static let svgPivot = CGPoint(x: 320, y: 413)
     private static let svgChinY: CGFloat = 594
+    /// A radius in SVG units enclosing the head outline and its sticker rim, excluding the ears.
+    private static let headRadius: CGFloat = 248 + 7.5
     /// Canvas Y of the head pivot at rest: the eyes sit just above the keyboard, the chin hides behind it.
     private static let restHeadY: CGFloat = 208
     /// Lift of the dizzy stars above the head pivot.
@@ -81,6 +83,10 @@ enum XiaoheiRenderer {
 
     /// World (canvas) position of the head pivot. Shared by drawing, hit testing and overlay effects.
     static func headCenter(_ p: CatPhysics, showPaws: Bool) -> CGPoint {
+        headPose(p, showPaws: showPaws).center
+    }
+
+    private static func headPose(_ p: CatPhysics, showPaws: Bool) -> (center: CGPoint, rotation: CGFloat, sx: CGFloat, sy: CGFloat) {
         let scruff = clamp01(p.scruffDrag.value)
         let lie = smooth(p.lieIntensity.value)
         let hunt = clamp01(p.huntIntensity.value)
@@ -100,7 +106,22 @@ enum XiaoheiRenderer {
             if !p.leftPawOnMouse { dy = max(dy, p.leftPaw.point.y - CatPhysics.leftPawRest.y) }
             y += min(8, max(0, dy) * 0.25)
         }
-        return CGPoint(x: x, y: y)
+        let rawCenter = CGPoint(x: x, y: y)
+        let rotation = headRotation(p, center: rawCenter)
+        let squash = 1 - p.bodySquash.value
+        let sx = 1 + squash * 0.25
+        let sy = 1 - squash * 0.45
+        let cosRoll = cos(rotation), sinRoll = sin(rotation)
+        let yaw = max(-1, min(1, p.headYaw.value))
+        // Keep the posed outline behind the keyboard's actual far corners, even during a lean.
+        let yawShift = yaw * 8 * k * sx
+        let chinOffset = (svgChinY - svgPivot.y) * k * (1 - sy)
+        let outlineOffset = yawShift * cosRoll - chinOffset * sinRoll
+        let halfWidth = headRadius * k * hypot(sx * cosRoll, sy * sinRoll)
+        let deckCenter = (kbEdgeLeft.x + kbEdgeRight.x) / 2
+        let room = max(0, (kbEdgeRight.x - kbEdgeLeft.x) / 2 - halfWidth)
+        let outlineX = max(deckCenter - room, min(deckCenter + room, x + outlineOffset))
+        return (CGPoint(x: outlineX - outlineOffset, y: y), rotation, sx, sy)
     }
 
     private static func headRotation(_ p: CatPhysics, center: CGPoint) -> CGFloat {
@@ -131,7 +152,7 @@ enum XiaoheiRenderer {
 
     /// Head only, clipped at the keyboard's far edge; the keyboard drawn afterwards sits in front of it.
     static func drawHead(in ctx: CGContext, physics p: CatPhysics, showPaws: Bool) {
-        let center = headCenter(p, showPaws: showPaws)
+        let (center, rotation, sx, sy) = headPose(p, showPaws: showPaws)
 
         ctx.saveGState()
         let w = CatPhysics.canvasSize.width
@@ -143,11 +164,8 @@ enum XiaoheiRenderer {
         visible.closeSubpath()
         ctx.addPath(visible)
         ctx.clip()
-        let sq = p.bodySquash.value
-        let sx = 1 + (1 - sq) * 0.25
-        let sy = 1 - (1 - sq) * 0.45
         ctx.translateBy(x: center.x, y: center.y)
-        ctx.rotate(by: headRotation(p, center: center))
+        ctx.rotate(by: rotation)
         // Squash and stretch around the chin so typing bounces stay grounded.
         let chin = (svgChinY - svgPivot.y) * k
         ctx.translateBy(x: 0, y: chin)
@@ -156,9 +174,10 @@ enum XiaoheiRenderer {
 
         let yaw = max(-1, min(1, p.headYaw.value))
         let pitch = max(-1, min(1, p.headPitch.value))
-        let earL = earPath(earLeft, side: -1, yaw: yaw, pitch: pitch, physics: p)
-        let earR = earPath(earRight, side: 1, yaw: yaw, pitch: pitch, physics: p)
-        var headShift = CGAffineTransform(translationX: yaw * 8, y: 0)
+        let headShiftX = yaw * 8
+        let earL = earPath(earLeft, side: -1, yaw: yaw, pitch: pitch, headShiftX: headShiftX, physics: p)
+        let earR = earPath(earRight, side: 1, yaw: yaw, pitch: pitch, headShiftX: headShiftX, physics: p)
+        var headShift = CGAffineTransform(translationX: headShiftX, y: 0)
         let head = headPath.copy(using: &headShift) ?? headPath
 
         // Light sticker rim so the black head stays readable on dark wallpapers (not part of the character).
@@ -176,7 +195,8 @@ enum XiaoheiRenderer {
         ctx.restoreGState()
     }
 
-    private static func earPath(_ ear: CGPath, side s: CGFloat, yaw: CGFloat, pitch: CGFloat, physics p: CatPhysics) -> CGPath {
+    private static func earPath(_ ear: CGPath, side s: CGFloat, yaw: CGFloat, pitch: CGFloat,
+                                headShiftX: CGFloat, physics p: CatPhysics) -> CGPath {
         let root = CGPoint(x: 320 + s * 150, y: 268)
         let turnNear = max(0, s * yaw), turnFar = max(0, -s * yaw)
         let scaleX = 1 - 0.22 * turnNear + 0.06 * turnFar
@@ -186,7 +206,19 @@ enum XiaoheiRenderer {
         t = t.rotated(by: rot)
         t = t.scaledBy(x: scaleX, y: 1 - max(0, fold) * 0.10)
         t = t.translatedBy(x: -root.x, y: -root.y)
-        return ear.copy(using: &t) ?? ear
+
+        // Keep the SVG's sloped ear base attached to the head. Apply the pose at the tip,
+        // fading its displacement to zero along the line between the two base points.
+        let tip = CGPoint(x: 320 + s * 197.87, y: 148.795)
+        let posedTip = tip.applying(t)
+        let slope = s * (309.783 - 238.107) / (538.233 - 400.239)
+        let intercept = 238.107 - slope * (320 + s * 80.239)
+        let tipHeight = slope * tip.x + intercept - tip.y
+        let dx = (posedTip.x - tip.x - headShiftX) / tipHeight
+        let dy = (posedTip.y - tip.y) / tipHeight
+        var anchored = CGAffineTransform(a: 1 + slope * dx, b: slope * dy, c: -dx, d: 1 - dy,
+                                         tx: headShiftX + intercept * dx, ty: intercept * dy)
+        return ear.copy(using: &anchored) ?? ear
     }
 
     // MARK: Eyes

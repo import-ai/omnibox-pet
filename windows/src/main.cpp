@@ -409,9 +409,11 @@ void showUpdateResult(AppState& app, UpdateResult result) {
     const bool english = app.settings.isEnglish;
     const wchar_t* title = english ? L"OmniBox Pet" : L"桌宠小黑";
     if (result == UpdateResult::Available) {
-        const wchar_t* message = english ? L"A new version is available. Open the release page to download it?"
-                                         : L"有新版本。要打开发布页下载吗？";
-        if (MessageBoxW(app.hwnd, message, title, MB_YESNO | MB_ICONINFORMATION) == IDYES) {
+        const std::wstring message = std::wstring(english ? L"Current version v" : L"当前版本 v") + APP_VERSION +
+            (english ? L"\n\nDownload the new .exe, quit this version, then double-click the new file. Open the download page?"
+                     : L"\n\n下载新版 .exe 后，先退出当前版本，再双击新版文件。要打开下载页吗？");
+        if (MessageBoxW(app.hwnd, message.c_str(), english ? L"OmniBox Pet update available" : L"桌宠小黑有新版本",
+                        MB_YESNO | MB_ICONINFORMATION) == IDYES) {
             ShellExecuteW(app.hwnd, L"open", RELEASES_URL, nullptr, nullptr, SW_SHOWNORMAL);
         }
     } else if (manual) {
@@ -617,9 +619,11 @@ void housekeeping(AppState& app) {
             if (app.blockedForegroundSince <= 0.0) app.blockedForegroundSince = now;
             if (!app.warnedElevatedForeground && (fullscreenFg || (now - app.blockedForegroundSince >= 1.0))) {
                 app.warnedElevatedForeground = true;
+                const bool en = app.settings.isEnglish;
                 showTrayBalloon(app,
-                    L"XiaoheiPet 听不到当前窗口的键盘",
-                    L"当前软件（如 WPS / 游戏）以管理员权限运行，Windows 会拦截它的键盘输入。右键小猫或托盘图标 →「以管理员身份重新启动」即可恢复。");
+                    en ? L"Key reactions are limited in this app" : L"当前应用的按键互动受限",
+                    en ? L"The active app is running with elevated permissions. In Xiaohei’s menu, choose Restart as Administrator to react to its keys."
+                       : L"当前应用以较高权限运行。要让小黑跟上这个应用里的按键，请在小黑菜单里选择「以管理员身份重启」。");
             }
         } else {
             app.blockedForegroundSince = 0.0;
@@ -675,24 +679,22 @@ void showContextMenu(AppState& app, POINT screenPt) {
     auto tr = [&](const wchar_t* zh, const wchar_t* eng) -> const wchar_t* { return en ? eng : zh; };
 
     // Status & live stats header
-    std::wstring statusStr = app.input.isRawInputRegistered
-        ? tr(L"\u25CF \u786C\u4EF6\u7EA7\u5168\u72B6\u6001\u76D1\u542C\u4E2D (Raw Input \u6E38\u620F/\u6253\u5B57)",
-             L"\u25CF Hardware Input Active (Raw Input)")
-        : tr(L"\u26A0 Raw Input \u672A\u542F\u52A8", L"\u26A0 Raw Input Inactive");
-    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, statusStr.c_str());
+    const wchar_t* status = app.input.isRawInputRegistered
+        ? tr(L"● 按键互动已开启（Raw Input）", L"● Key Reactions On (Raw Input)")
+        : tr(L"● 按键互动处于兼容模式", L"● Key Reactions in Compatibility Mode");
+    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, status);
     if (!app.isElevated && app.lastBlockedForegroundTime > 0.0 && nowSeconds() - app.lastBlockedForegroundTime < 600.0) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0,
-            tr(L"\u26A0 \u521A\u624D\u7684\u5E94\u7528\uFF08\u5982 WPS / \u6E38\u620F\uFF09\u4EE5\u7BA1\u7406\u5458\u6743\u9650\u8FD0\u884C\uFF0C\u952E\u76D8\u88AB Windows \u62E6\u622A\u4E86",
-               L"\u26A0 Foreground admin app (e.g. WPS / game) blocked keyboard input"));
+            tr(L"⚠ 管理员应用中的按键互动可能受限", L"⚠ Key Reactions May Be Limited in Elevated Apps"));
     }
 
     std::wstring stats = en
         ? (L"Today " + std::to_wstring(app.input.totalKeystrokesToday)
             + L"  \u00B7  KPM " + std::to_wstring(app.input.currentKPM())
             + L"  \u00B7  Pets " + std::to_wstring(app.physics.totalPetSessions))
-        : (L"\u4ECA\u65E5\u51FB\u952E " + std::to_wstring(app.input.totalKeystrokesToday)
+        : (L"今日击键 " + std::to_wstring(app.input.totalKeystrokesToday)
             + L"  \u00B7  KPM " + std::to_wstring(app.input.currentKPM())
-            + L"  \u00B7  \u6478\u732B " + std::to_wstring(app.physics.totalPetSessions) + L" \u6B21");
+            + L"  \u00B7  摸小黑 " + std::to_wstring(app.physics.totalPetSessions) + L" 次");
     AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, stats.c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
@@ -707,12 +709,10 @@ void showContextMenu(AppState& app, POINT screenPt) {
     AppendMenuW(menu, MF_STRING | (isAutoStartEnabled() ? MF_CHECKED : 0), CMD_TOGGLE_AUTOSTART, tr(L"\u5F00\u673A\u81EA\u52A8\u542F\u52A8", L"Launch at Startup"));
     if (app.isElevated) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0,
-            tr(L"\u2713 \u5DF2\u4EE5\u7BA1\u7406\u5458\u8EAB\u4EFD\u8FD0\u884C\uFF08WPS / \u7BA1\u7406\u5458\u6743\u9650\u6E38\u620F\u7684\u952E\u76D8\u90FD\u80FD\u76D1\u542C\uFF09",
-               L"\u2713 Running as Administrator (captures keys in WPS / admin games)"));
+            tr(L"✓ 已以管理员身份运行", L"✓ Running as Administrator"));
     } else {
         AppendMenuW(menu, MF_STRING, CMD_RELAUNCH_ADMIN,
-            tr(L"\u4EE5\u7BA1\u7406\u5458\u8EAB\u4EFD\u91CD\u65B0\u542F\u52A8\uFF08WPS / \u6E38\u620F\u91CC\u952E\u76D8\u6CA1\u53CD\u5E94\u65F6\u70B9\u8FD9\u91CC\uFF09",
-               L"Restart as Administrator (fix no keyboard input in WPS / games)"));
+            tr(L"以管理员身份重启", L"Restart as Administrator"));
     }
     AppendMenuW(menu, MF_STRING | (app.settings.runAsAdmin ? MF_CHECKED : 0), CMD_TOGGLE_RUN_AS_ADMIN, tr(L"\u6BCF\u6B21\u542F\u52A8\u90FD\u4EE5\u7BA1\u7406\u5458\u8EAB\u4EFD\u8FD0\u884C", L"Always Run as Administrator"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -763,7 +763,9 @@ void showContextMenu(AppState& app, POINT screenPt) {
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, CMD_SKINS, tr(L"皮肤", L"Skins"));
-    AppendMenuW(menu, MF_STRING, CMD_CHECK_UPDATES, tr(L"检查更新…", L"Check for Updates…"));
+    const std::wstring updateTitle = en ? (std::wstring(L"Check for Updates (v") + APP_VERSION + L")")
+                                        : (std::wstring(L"检查更新（v") + APP_VERSION + L"）");
+    AppendMenuW(menu, MF_STRING, CMD_CHECK_UPDATES, updateTitle.c_str());
     AppendMenuW(menu, MF_STRING, CMD_QUIT, tr(L"退出桌宠小黑", L"Quit OmniBox Pet"));
 
     HWND menuOwner = app.menuOwnerHwnd ? app.menuOwnerHwnd : app.hwnd;
@@ -992,7 +994,7 @@ void tickAndRender(AppState& app) {
                 app.hasLastHover = false;
             } else {
                 Pt cp = app.settings.flipHorizontal ? Pt{ CatPhysics::CanvasWidth - rawCp.x, rawCp.y } : rawCp;
-                CatHitZone zone = CatRenderer::hitTest(cp, app.physics);
+                CatHitZone zone = CatRenderer::hitTest(cp, app.physics, app.settings.showPaws);
                 if (zone == CatHitZone::Head) {
                     if (app.hasLastHover) {
                         float d = std::hypot(cp.x - app.lastHoverCanvas.x, cp.y - app.lastHoverCanvas.y);

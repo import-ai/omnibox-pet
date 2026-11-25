@@ -10,6 +10,12 @@
 #include "KeyMap.hpp"
 #include "InputEngine.hpp"
 
+enum class KeyboardTheme : int {
+    ClassicMilk = 0,
+    MidnightHacker = 1,
+    RetroCream = 2
+};
+
 enum class EyeColorTheme : int {
     NeonChartreuse = 0,
     SiameseBlue = 1,

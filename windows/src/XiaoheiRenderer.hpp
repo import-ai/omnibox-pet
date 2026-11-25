@@ -101,7 +101,8 @@ inline float headRotation(const CatPhysics& p, Pt center) {
         + std::sin(p.time * 9.5f) * 0.16f * wobble - fall * 0.30f;
 }
 
-inline void poseEar(GraphicsPath& ear, const char* path, float side, float yaw, float pitch, const CatPhysics& p) {
+inline void poseEar(GraphicsPath& ear, const char* path, float side, float yaw, float pitch, float headShiftX,
+                    const CatPhysics& p) {
     addSvgPath(ear, path);
     const float rootX = HeadPivotX + side * 150.0f;
     constexpr float rootY = 268.0f;
@@ -112,7 +113,18 @@ inline void poseEar(GraphicsPath& ear, const char* path, float side, float yaw, 
     pose.Scale(1.0f - 0.22f * std::max(0.0f, side * yaw) + 0.06f * std::max(0.0f, -side * yaw),
                1.0f - 0.10f * std::max(0.0f, fold));
     pose.Translate(-rootX, -rootY);
-    ear.Transform(&pose);
+
+    // Keep the SVG's sloped ear base attached to the head while the tip follows the pose.
+    const PointF tip(HeadPivotX + side * 197.87f, 148.795f);
+    PointF posedTip = tip;
+    pose.TransformPoints(&posedTip, 1);
+    const float slope = side * (309.783f - 238.107f) / (538.233f - 400.239f);
+    const float intercept = 238.107f - slope * (HeadPivotX + side * 80.239f);
+    const float tipHeight = slope * tip.X + intercept - tip.Y;
+    const float dx = (posedTip.X - tip.X - headShiftX) / tipHeight;
+    const float dy = (posedTip.Y - tip.Y) / tipHeight;
+    Matrix anchored(1.0f + slope * dx, slope * dy, -dx, 1.0f - dy, headShiftX + intercept * dx, intercept * dy);
+    ear.Transform(&anchored);
 }
 
 inline void drawEye(Graphics& g, const EyeArt& eye, const CatPhysics& p, float side, float yaw, float pitch) {
@@ -220,11 +232,12 @@ inline void drawHead(Graphics& g, const CatPhysics& p, bool showPaws) {
 
     const float yaw = std::clamp(p.headYaw.value, -1.0f, 1.0f);
     const float pitch = std::clamp(p.headPitch.value, -1.0f, 1.0f);
+    const float headShiftX = yaw * 8.0f;
     GraphicsPath leftEar, rightEar, head;
-    poseEar(leftEar, XiaoheiArt::earLeft, -1.0f, yaw, pitch, p);
-    poseEar(rightEar, XiaoheiArt::earRight, 1.0f, yaw, pitch, p);
+    poseEar(leftEar, XiaoheiArt::earLeft, -1.0f, yaw, pitch, headShiftX, p);
+    poseEar(rightEar, XiaoheiArt::earRight, 1.0f, yaw, pitch, headShiftX, p);
     addSvgPath(head, XiaoheiArt::head);
-    Matrix headShift(1.0f, 0.0f, 0.0f, 1.0f, yaw * 8.0f, 0.0f);
+    Matrix headShift(1.0f, 0.0f, 0.0f, 1.0f, headShiftX, 0.0f);
     head.Transform(&headShift);
 
     Pen rim(Color(235, 254, 246, 236), 15.0f);

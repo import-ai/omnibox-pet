@@ -7,20 +7,34 @@ import CoreGraphics
 /// No nose, mouth, muzzle, whiskers, body, neck, tail, eyebrows or pupil highlights are ever drawn.
 /// Emotions use gaze, eye shape, tilt and external symbols only.
 ///
-/// Desktop-pet adaptation (derived design, draft): two detached floating paws press the keyboard and
-/// mouse. They follow the floating paw language of the 「记笔记」/「赶工」 stickers, never connect to the
-/// head, and can be switched off ("pure head" mode), in which Xiaohei nods toward the keys instead.
+/// Desktop-pet adaptation (derived design, draft, requested by the project owner): Xiaohei peeks out
+/// from behind the far edge of a small desk and reaches over it with two arms to type and use the mouse.
+/// The arms contradict the base "no limbs" identity and exist only in this pet; they can be switched
+/// off, leaving just the peeking head, which then nods toward the keys.
 enum XiaoheiRenderer {
     static let ink = CGColor(srgbRed: 23.0 / 255.0, green: 23.0 / 255.0, blue: 23.0 / 255.0, alpha: 1)
     static let cream = CGColor(srgbRed: 254.0 / 255.0, green: 246.0 / 255.0, blue: 236.0 / 255.0, alpha: 1)
 
-    /// SVG units -> logical canvas points. The 486-unit-wide head becomes ~131 pt on the 360x320 canvas.
-    static let k: CGFloat = 0.27
+    /// SVG units -> logical canvas points. The 486-unit-wide head becomes ~146 pt on the 360x320 canvas.
+    static let k: CGFloat = 0.30
     /// Head pivot in SVG space (horizontal centre, vertical centre of the head without ears).
     private static let svgPivot = CGPoint(x: 320, y: 413)
     private static let svgChinY: CGFloat = 594
-    /// Canvas Y of the head pivot at rest: the chin floats ~15 pt above the keyboard.
-    private static let restHeadY: CGFloat = 162
+    /// Canvas Y of the head pivot at rest: the eyes sit just above the desk edge, the chin hides behind it.
+    private static let restHeadY: CGFloat = 188
+
+    // MARK: - Desk
+
+    /// Far edge of the desk; everything of the head below it is hidden by the desk top.
+    static let edgeY: CGFloat = 220
+    private static let deskTop = CGRect(x: 30, y: edgeY, width: 304, height: 84)
+    private static let deskThickness: CGFloat = 8
+    static let deskHitRect = CGRect(x: 30, y: edgeY, width: 304, height: 84 + 8)
+    /// Lift of the dizzy stars above the head pivot.
+    static let starLift: CGFloat = 92
+    private static let deskTopColor = CGColor(srgbRed: 0.918, green: 0.875, blue: 0.804, alpha: 1)
+    private static let deskFrontColor = CGColor(srgbRed: 0.788, green: 0.706, blue: 0.592, alpha: 1)
+    private static let deskEdgeColor = CGColor(srgbRed: 0.969, green: 0.941, blue: 0.898, alpha: 1)
 
     // MARK: - Geometry (parsed once from the generated V14 path data)
 
@@ -66,30 +80,22 @@ enum XiaoheiRenderer {
     static func headCenter(_ p: CatPhysics, showPaws: Bool) -> CGPoint {
         let scruff = clamp01(p.scruffDrag.value)
         let lie = smooth(p.lieIntensity.value)
-        var x = CatPhysics.seatAnchor.x + p.bodyShiftX.value + p.bodyTilt.value * 36 + p.headYaw.value * 4
-        var y = restHeadY + p.headOffsetY.value * 0.8 + p.headPitch.value * 3
-            + p.breathingOffset * 1.4 - scruff * 22 + lie * 34
+        let hunt = clamp01(p.huntIntensity.value)
+        let dizzyFall = smooth((p.dizzyIntensity.value - 0.5) / 0.5)
+        let x = CatPhysics.seatAnchor.x + p.bodyShiftX.value + p.bodyTilt.value * 30 + p.headYaw.value * 4
+        // Sink behind the desk when stalking, dozing or slumped; rise when the window is carried.
+        var y = restHeadY + p.headOffsetY.value * 0.8 + p.headPitch.value * 3 + p.breathingOffset * 1.4
+            + hunt * 5 + p.sleepiness * 6 + lie * 8 + dizzyFall * 14 - scruff * 24
 
-        // 3-key easter egg: Xiaohei head-bonks the third key instead of using a hind foot.
-        let bonk = clamp01(p.hindFootActive.value)
-        if bonk > 0.001 {
-            x += (p.hindFoot.x.value - x) * 0.22 * bonk
-            y += 14 * bonk
-        }
+        // 3-key easter egg: a quick head-bonk nod toward the third key.
+        y += 8 * clamp01(p.hindFootActive.value)
 
-        // Pure-head mode: without paws, nod toward the key being typed.
+        // Arms off: nod toward the key being typed.
         if !showPaws {
-            var dx: CGFloat = 0, dy: CGFloat = 0
             let r = p.rightPaw.point
-            let rdx = r.x - CatPhysics.rightPawRest.x, rdy = r.y - CatPhysics.rightPawRest.y
-            dx = rdx; dy = rdy
-            if !p.leftPawOnMouse {
-                let l = p.leftPaw.point
-                let ldx = l.x - CatPhysics.leftPawRest.x, ldy = l.y - CatPhysics.leftPawRest.y
-                if hypot(ldx, ldy) > hypot(rdx, rdy) { dx = ldx; dy = ldy }
-            }
-            x += max(-14, min(14, dx * 0.16))
-            y += min(10, max(0, dy) * 0.3)
+            var dy = r.y - CatPhysics.rightPawRest.y
+            if !p.leftPawOnMouse { dy = max(dy, p.leftPaw.point.y - CatPhysics.leftPawRest.y) }
+            y += min(8, max(0, dy) * 0.25)
         }
         return CGPoint(x: x, y: y)
     }
@@ -98,13 +104,18 @@ enum XiaoheiRenderer {
         let lie = smooth(p.lieIntensity.value)
         let bonk = clamp01(p.hindFootActive.value)
         let bonkDir: CGFloat = p.hindFoot.x.value >= center.x ? 1 : -1
-        return p.headTilt.value + p.bodyTilt.value * 0.5 - lie * 0.10
+        let dizzy = clamp01(p.dizzyIntensity.value)
+        let dizzyFall = smooth((dizzy - 0.5) / 0.5)
+        let wobble = clamp01((dizzy - 0.12) / 0.38) * (1 - dizzyFall)
+        return p.headTilt.value + p.bodyTilt.value * 0.5 - lie * 0.12
             + p.scruffSwing.value * 0.6 + bonk * 0.12 * bonkDir
+            + sin(p.time * 9.5) * 0.16 * wobble - dizzyFall * 0.30
     }
 
     // MARK: - Hit testing
 
     static func hitTestHead(point pt: CGPoint, physics: CatPhysics, showPaws: Bool) -> Bool {
+        guard pt.y < edgeY else { return false }
         let c = headCenter(physics, showPaws: showPaws)
         // Ears + head span SVG y 148...594; the ellipse covers both with a small margin.
         let cy = c.y + (371 - svgPivot.y) * k
@@ -115,11 +126,9 @@ enum XiaoheiRenderer {
 
     // MARK: - Drawing
 
-    static func draw(in ctx: CGContext, physics p: CatPhysics, showPaws: Bool) {
+    /// Head only; the desk drawn afterwards covers everything below `edgeY`.
+    static func drawHead(in ctx: CGContext, physics p: CatPhysics, showPaws: Bool) {
         let center = headCenter(p, showPaws: showPaws)
-        let lie = smooth(p.lieIntensity.value)
-
-        drawFloatShadow(in: ctx, center: center, lie: lie)
 
         ctx.saveGState()
         let sq = p.bodySquash.value
@@ -153,23 +162,29 @@ enum XiaoheiRenderer {
         drawEyes(in: ctx, physics: p, yaw: yaw, pitch: pitch)
         drawAngerMark(in: ctx, physics: p, yaw: yaw)
         ctx.restoreGState()
-
-        if showPaws {
-            drawPaws(in: ctx, physics: p, head: center, lie: lie)
-        }
-        drawEasterEggImpacts(in: ctx, physics: p)
     }
 
-    private static func drawFloatShadow(in ctx: CGContext, center: CGPoint, lie: CGFloat) {
-        let chinY = center.y + (svgChinY - svgPivot.y) * k
-        let deckY: CGFloat = 240
-        let gap = max(0, deckY - chinY)
-        let fade = clamp01(1 - gap / 70) * (1 - lie * 0.6)
-        guard fade > 0.02 else { return }
-        let w = 96 * (1 - min(gap, 60) / 200)
+    /// Small desk top with a visible front face; its far edge is where Xiaohei peeks out.
+    static func drawDesk(in ctx: CGContext) {
         ctx.saveGState()
-        ctx.setFillColor(ink.copy(alpha: 0.20 * fade) ?? ink)
-        ctx.fillEllipse(in: CGRect(x: center.x - w / 2, y: deckY - 5, width: w, height: 10))
+        let r: CGFloat = 14
+        // Soft contact shadow under the desk.
+        ctx.setFillColor(ink.copy(alpha: 0.10) ?? ink)
+        ctx.fillEllipse(in: CGRect(x: deskTop.minX + 10, y: deskTop.maxY + deskThickness - 3,
+                                   width: deskTop.width - 20, height: 9))
+        let front = deskTop.offsetBy(dx: 0, dy: deskThickness)
+        ctx.addPath(CGPath(roundedRect: front, cornerWidth: r, cornerHeight: r, transform: nil))
+        ctx.setFillColor(deskFrontColor)
+        ctx.fillPath()
+        ctx.addPath(CGPath(roundedRect: deskTop, cornerWidth: r, cornerHeight: r, transform: nil))
+        ctx.setFillColor(deskTopColor)
+        ctx.fillPath()
+        // Highlight along the far edge so the head reads as hidden behind it.
+        ctx.move(to: CGPoint(x: deskTop.minX + r, y: edgeY + 1))
+        ctx.addLine(to: CGPoint(x: deskTop.maxX - r, y: edgeY + 1))
+        ctx.setStrokeColor(deskEdgeColor)
+        ctx.setLineWidth(2)
+        ctx.strokePath()
         ctx.restoreGState()
     }
 
@@ -195,7 +210,7 @@ enum XiaoheiRenderer {
         let anger = clamp01((p.angerIntensity.value - 0.15) / 0.6)
         let closure = p.effectiveEyeClosure
         let yawRad = yaw * 0.32
-        let pitchRad = pitch * 0.26
+        let pitchRad = pitch * (pitch > 0 ? 0.12 : 0.26)
         let R: CGFloat = 250, Rv: CGFloat = 230
 
         for e in eyes {
@@ -336,56 +351,90 @@ enum XiaoheiRenderer {
         ctx.restoreGState()
     }
 
-    // MARK: Floating paws (derived design)
+    // MARK: Arms over the desk edge (derived design)
 
-    private static func drawPaws(in ctx: CGContext, physics p: CatPhysics, head: CGPoint, lie: CGFloat) {
-        let paws: [(CGPoint, CGPoint, CGFloat)] = [
-            (p.leftPaw.point, CatPhysics.leftPawRest, -1),
-            (p.rightPaw.point, CatPhysics.rightPawRest, 1),
-        ]
-        for (pos, rest, s) in paws {
-            let resting = 1 - clamp01(hypot(pos.x - rest.x, pos.y - rest.y) / 12)
-            var c = pos
-            // Resting paws bob slightly out of phase with the head, so they read as floating.
-            c.y -= (1.5 + sin(p.time * 2.1 + s * 0.9) * 1.3) * resting
-            // Lying down: paws tuck in beside the cheeks.
-            let tuck = CGPoint(x: head.x + s * 46, y: head.y + 46)
-            c = CGPoint(x: c.x + (tuck.x - c.x) * lie, y: c.y + (tuck.y - c.y) * lie)
+    static func drawArms(in ctx: CGContext, physics p: CatPhysics) {
+        let head = headCenter(p, showPaws: true)
+        let lie = smooth(p.lieIntensity.value)
+        // Physics assigns keys by QWERTY hand, but the keyboard faces Xiaohei (mirrored for the viewer).
+        // Pair shoulders with paws by on-screen position so the arms never cross.
+        let a = p.leftPaw.point, b = p.rightPaw.point
+        let (viewerLeft, viewerRight) = a.x <= b.x ? (a, b) : (b, a)
+        let arms: [(CGPoint, CGFloat)] = [(viewerLeft, -1), (viewerRight, 1)]
+        for (rawPos, s) in arms {
+            // Idle paws rest a little forward on the desk so the forearms show draped over the edge.
+            let rest = s < 0 ? CatPhysics.leftPawRest : CatPhysics.rightPawRest
+            let restness = 1 - clamp01(hypot(rawPos.x - rest.x, rawPos.y - rest.y) / 14)
+            let idleSpot = CGPoint(x: head.x + s * 40, y: edgeY + 19)
+            let pos = CGPoint(x: rawPos.x + (idleSpot.x - rawPos.x) * restness,
+                              y: rawPos.y + (idleSpot.y - rawPos.y) * restness)
+            // Lying down: forearms fold together just past the edge, like napping on a desk.
+            let fold = CGPoint(x: head.x + s * 18, y: edgeY + 15)
+            var end = CGPoint(x: pos.x + (fold.x - pos.x) * lie, y: pos.y + (fold.y - pos.y) * lie)
+            end.y = max(end.y, edgeY + 10)
+            // Shoulders sit behind the desk; the arm starts above the edge and is cut flat there, so it
+            // reads as reaching up from below and over the lip.
+            let root = CGPoint(x: head.x + s * 54, y: edgeY - 12)
+            let dx = end.x - root.x, dy = end.y - root.y
+            let len = max(1, hypot(dx, dy))
+            let dir = CGPoint(x: dx / len, y: dy / len)
+            let tip = CGPoint(x: end.x - dir.x * 5, y: end.y - dir.y * 5)
+            // Elbow bulges outward and lies on the desk, giving a relaxed draped curve.
+            let ctrl = CGPoint(x: (root.x + tip.x) * 0.5 + s * min(10, len * 0.12),
+                               y: (root.y + tip.y) * 0.5 + 2)
+            let arm = CGMutablePath()
+            arm.move(to: root)
+            arm.addQuadCurve(to: tip, control: ctrl)
 
-            // Contact shadow on the keyboard/mouse.
             ctx.saveGState()
-            ctx.setFillColor(ink.copy(alpha: 0.16 * (1 - lie)) ?? ink)
-            ctx.fillEllipse(in: CGRect(x: pos.x - 8, y: pos.y - 1, width: 16, height: 5))
-            ctx.restoreGState()
-
-            ctx.saveGState()
-            ctx.translateBy(x: c.x, y: c.y - 6.5)
-            ctx.rotate(by: s * 0.16 + p.headTilt.value * 0.3)
-            let paw = CGMutablePath()
-            paw.move(to: CGPoint(x: -10.5, y: 2))
-            paw.addCurve(to: CGPoint(x: 10.5, y: 2), control1: CGPoint(x: -10.5, y: -10.5), control2: CGPoint(x: 10.5, y: -10.5))
-            paw.addCurve(to: CGPoint(x: -10.5, y: 2), control1: CGPoint(x: 9.5, y: 8.8), control2: CGPoint(x: -9.5, y: 8.8))
-            paw.closeSubpath()
-            ctx.addPath(paw)
+            ctx.clip(to: CGRect(x: 0, y: edgeY - 2, width: CatPhysics.canvasSize.width, height: CatPhysics.canvasSize.height))
+            // Contact shadow of the forearm and paw on the desk.
+            ctx.setFillColor(ink.copy(alpha: 0.14 * (1 - lie * 0.5)) ?? ink)
+            ctx.fillEllipse(in: CGRect(x: end.x - 9, y: end.y - 1, width: 18, height: 5.5))
+            ctx.addPath(arm)
+            ctx.setLineCap(.butt)
             ctx.setStrokeColor(cream.copy(alpha: 0.95) ?? cream)
-            ctx.setLineWidth(2.6)
+            ctx.setLineWidth(16)
             ctx.strokePath()
-            ctx.addPath(paw)
-            ctx.setFillColor(ink)
-            ctx.fillPath()
-            // Two toe separations on the front edge (「记笔记」 sticker paw language).
-            ctx.move(to: CGPoint(x: -3.6, y: 7.0)); ctx.addLine(to: CGPoint(x: -3.1, y: 3.4))
-            ctx.move(to: CGPoint(x: 3.6, y: 7.0)); ctx.addLine(to: CGPoint(x: 3.1, y: 3.4))
-            ctx.setStrokeColor(cream.copy(alpha: 0.9) ?? cream)
-            ctx.setLineWidth(1.2)
-            ctx.setLineCap(.round)
+            ctx.addPath(arm)
+            ctx.setStrokeColor(ink)
+            ctx.setLineWidth(12.5)
             ctx.strokePath()
             ctx.restoreGState()
+
+            drawPaw(in: ctx, at: end, direction: dir, physics: p)
         }
     }
 
+    private static func drawPaw(in ctx: CGContext, at end: CGPoint, direction dir: CGPoint, physics p: CatPhysics) {
+        ctx.saveGState()
+        ctx.translateBy(x: end.x - dir.x * 4, y: end.y - dir.y * 4)
+        // Local +y (toes) points along the reach direction.
+        ctx.rotate(by: atan2(dir.y, dir.x) - .pi / 2)
+        let paw = CGMutablePath()
+        paw.move(to: CGPoint(x: -10, y: -2))
+        paw.addCurve(to: CGPoint(x: 10, y: -2), control1: CGPoint(x: -10, y: -11), control2: CGPoint(x: 10, y: -11))
+        paw.addCurve(to: CGPoint(x: -10, y: -2), control1: CGPoint(x: 10.5, y: 10), control2: CGPoint(x: -10.5, y: 10))
+        paw.closeSubpath()
+        ctx.addPath(paw)
+        ctx.setStrokeColor(cream.copy(alpha: 0.95) ?? cream)
+        ctx.setLineWidth(2.6)
+        ctx.strokePath()
+        ctx.addPath(paw)
+        ctx.setFillColor(ink)
+        ctx.fillPath()
+        // Two toe separations on the front edge (「记笔记」 sticker paw language).
+        ctx.move(to: CGPoint(x: -3.6, y: 6.6)); ctx.addLine(to: CGPoint(x: -3.0, y: 2.8))
+        ctx.move(to: CGPoint(x: 3.6, y: 6.6)); ctx.addLine(to: CGPoint(x: 3.0, y: 2.8))
+        ctx.setStrokeColor(cream.copy(alpha: 0.9) ?? cream)
+        ctx.setLineWidth(1.2)
+        ctx.setLineCap(.round)
+        ctx.strokePath()
+        ctx.restoreGState()
+    }
+
     /// Small pop rays on the 3rd (head bonk) and 4th simultaneous keys; Xiaohei has no foot or tail.
-    private static func drawEasterEggImpacts(in ctx: CGContext, physics p: CatPhysics) {
+    static func drawEasterEggImpacts(in ctx: CGContext, physics p: CatPhysics) {
         let hits: [(CGPoint, CGFloat)] = [
             (p.hindFoot.point, clamp01(p.hindFootActive.value)),
             (p.tailTip.point, clamp01((p.tailTyping.value - 0.4) / 0.6)),

@@ -67,7 +67,7 @@ final class CatSettings {
     var footEasterEgg: Bool {
         didSet { UserDefaults.standard.set(footEasterEgg, forKey: "KuroCat.FootEasterEgg") }
     }
-    /// Xiaohei has no limbs; floating detached paws are a derived, switchable adaptation (default on).
+    /// Xiaohei has no limbs; arms reaching over the desk are a derived, switchable adaptation (default on).
     var xiaoheiPaws: Bool {
         didSet { UserDefaults.standard.set(xiaoheiPaws, forKey: "Xiaohei.FloatingPaws") }
     }

@@ -940,7 +940,7 @@ func renderXiaoheiPreview(to path: String, dark: Bool) {
             p.headYaw.value = -0.55; p.headPitch.value = -0.25; p.headTilt.value = -0.09
             p.eyeGaze.x.value = -0.5; p.eyeGaze.y.value = -0.22
         }),
-        ("5. 3 键：用头顶第 3 个键", true, { p in
+        ("5. 3 键：点头 + 第 3 键冲击线", true, { p in
             for k: PhysicalKey in [.w, .leftShift, .space] { p.triggerKeyDown(k) }
             for i in p.floatingKeycaps.indices { p.floatingKeycaps[i].age = 0.2 }
             pawsAt(p, KeyboardLayout.canvasPoint(for: .space), KeyboardLayout.canvasPoint(for: .w))
@@ -968,10 +968,10 @@ func renderXiaoheiPreview(to path: String, dark: Bool) {
         ("10. 被拎起来 > <", true, { p in
             p.scruffDrag.value = 1; p.scruffSwing.value = 0.12; p.earFold.value = 0.4
         }),
-        ("11. 趴在键盘上", true, { p in
+        ("11. 趴在桌边睡", true, { p in
             p.lieIntensity.value = 1; p.setPreviewMoods(sleepiness: 1)
         }),
-        ("12. 纯头模式打字（无小爪）", false, { p in
+        ("12. 只露脑袋（关闭小手）", false, { p in
             p.triggerKeyDown(.k); p.floatingKeycaps[0].age = 0.25
             pawsAt(p, CatPhysics.leftPawRest, KeyboardLayout.canvasPoint(for: .k))
             p.headPitch.value = 0.6; p.eyeGaze.x.value = 0.4; p.eyeGaze.y.value = 0.7

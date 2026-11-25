@@ -12,12 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ticksSinceLastRedraw = 0
     private var lastDemoKeyTime: CFTimeInterval = 0
     private var isPetVisible = true
-    private var availableUpdateVersion: String?
-    private var availableUpdateURL: URL?
-    private var availableAssetURL: URL?
-    private var isUpdating = false
     private var isHandingOverToNewerCopy = false
-    private var dressingRoom: DressingRoomWindowController?
 
     private var currentAppVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
@@ -39,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let menu = self.buildMenu()
             NSMenu.popUpContextMenu(menu, with: event, for: self.overlayWindow.catView)
         }
-        // KuroCat .kurocat skins do not apply to Xiaohei, so skin-file drops are not wired up.
 
         // Wire dual-layer InputEngine -> CatPhysics
         let engine = InputEngine.shared
@@ -63,7 +57,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startRenderLoop()
         startWindowWatchdog()
 
-        // Upstream KuroCat auto-update is disabled: it would download and install KuroCat over this app.
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -660,119 +653,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         overlayWindow.applyScale(CGFloat(num.doubleValue))
     }
 
-    @objc private func selectCoatTheme(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let coat = CatCoatTheme(rawValue: raw) else { return }
-        CatSettings.shared.customSkin = ""
-        CatSettings.shared.coatTheme = coat
-        // Auto-pair signature eye color (still freely overridable via 瞳色切换!)
-        switch coat {
-        case .classicBlack:
-            CatSettings.shared.eyeTheme = .neonChartreuse
-        case .siamese:
-            CatSettings.shared.eyeTheme = .siameseBlue
-        case .shorthair:
-            CatSettings.shared.eyeTheme = .referenceHazel
-        case .orangeWhite:
-            CatSettings.shared.eyeTheme = .warmAmber
-        }
-        dressingRoom?.refresh()
-    }
-
-    // MARK: - Imported skins (换装间)
-
-    private static let skinWorkshopURLString = "https://chanke17.github.io/KuroCat-Workshop/"
-
-    func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.pathExtension.lowercased() == "kurocat" {
-            importSkin(from: url)
-        }
-    }
-
-    @objc private func openSkinWorkshop() {
-        if let url = URL(string: Self.skinWorkshopURLString) {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    @objc private func openSkinsFolder() {
-        let dir = SkinLibrary.directory
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(dir)
-    }
-
-    @objc private func showDressingRoom() {
-        if dressingRoom == nil {
-            let controller = DressingRoomWindowController()
-            controller.onImport = { [weak self] url in self?.importSkin(from: url) }
-            dressingRoom = controller
-        }
-        dressingRoom?.present()
-    }
-
-    /// Validates and stores a `.kurocat`, then wears it. Invalid files get a Chinese explanation.
-    private func importSkin(from url: URL) {
-        do {
-            let id = try SkinLibrary.shared.importFile(url)
-            CatSettings.shared.customSkin = id
-            let skin = SkinLibrary.shared.skin(id: id)
-            var message = "已换上「\(skin?.name ?? "新皮肤")」"
-            if let author = skin?.author, !author.isEmpty { message += "（作者：\(author)）" }
-            dressingRoom?.setStatus("✓ " + message, kind: 1)
-            dressingRoom?.refresh()
-        } catch {
-            let reason = error.localizedDescription
-            // With 换装间 open the red status line explains it in place; an alert is only for drops onto the cat.
-            if let room = dressingRoom, room.isVisible {
-                room.setStatus("没能导入「\(url.lastPathComponent)」：\(reason)", kind: 2)
-                return
-            }
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "无法导入这个皮肤"
-            alert.informativeText = "「\(url.lastPathComponent)」：\(reason)"
-            alert.addButton(withTitle: "知道了")
-            NSApp.activate(ignoringOtherApps: true)
-            alert.runModal()
-        }
-    }
-
-    @objc private func selectCustomSkin(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        CatSettings.shared.customSkin = id
-        dressingRoom?.refresh()
-    }
-
-    @objc private func deleteCustomSkin(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let skin = SkinLibrary.shared.skin(id: id) else { return }
-        let alert = NSAlert()
-        alert.messageText = "删除皮肤「\(skin.name)」？"
-        alert.informativeText = "会从皮肤文件夹里删除这个文件，删除后需要重新导入。"
-        alert.addButton(withTitle: "删除")
-        alert.addButton(withTitle: "取消")
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        if !SkinLibrary.shared.remove(id: id) {
-            let failed = NSAlert()
-            failed.messageText = "删除失败"
-            failed.informativeText = "无法删除 \(SkinLibrary.directory.appendingPathComponent("\(id).kurocat").path)"
-            failed.runModal()
-            return
-        }
-        if CatSettings.shared.customSkin == id { CatSettings.shared.customSkin = "" }
-        dressingRoom?.refresh()
-    }
-
     @objc private func selectKeyboardTheme(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let theme = KeyboardTheme(rawValue: raw) else { return }
         CatSettings.shared.keyboardTheme = theme
-    }
-
-    @objc private func selectEyeTheme(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let theme = EyeColorTheme(rawValue: raw) else { return }
-        CatSettings.shared.eyeTheme = theme
     }
 
     @objc private func resetPosition() {
@@ -806,108 +690,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.terminate(nil)
     }
 
-    // MARK: - Auto Update Checker & In-App Self-Updater
-
-    private static let updatePageURLString = "https://kurocat-download.app.workbuddy.host/?sharecode=JVAABIVZ7L"
-    private static let updateVersionJSONURLString = "https://kurocat-download.app.workbuddy.host/version.json?sharecode=JVAABIVZ7L"
-    private static let defaultMacAssetURLString = "https://kurocat-download.app.workbuddy.host/downloads/KuroCat-macOS-universal.zip?sharecode=JVAABIVZ7L"
-
-    @objc private func manualCheckForUpdates() {
-        checkForUpdates(manual: true)
-    }
-
-    @objc private func openUpdateDownload() {
-        performInAppUpdate()
-    }
-
-    private func parseUpdateInfo(from data: Data) -> (tag: String, pageURL: URL?, assetURL: URL?)? {
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let tagName = json["tag_name"] as? String, !tagName.isEmpty {
-            let pageStr = (json["html_url"] as? String) ?? Self.updatePageURLString
-            let assets = json["assets"] as? [String: Any]
-            let macStr = (assets?["macos"] as? String) ?? Self.defaultMacAssetURLString
-            return (tagName, URL(string: pageStr), URL(string: macStr))
-        }
-        if let html = String(data: data, encoding: .utf8) {
-            let patterns = [
-                #"v(\d+\.\d+\.\d+)\s*已发布"#,
-                #"版本\s*v(\d+\.\d+\.\d+)"#
-            ]
-            for pattern in patterns {
-                if let regex = try? NSRegularExpression(pattern: pattern),
-                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-                   let r = Range(match.range(at: 1), in: html) {
-                    return ("v" + String(html[r]), URL(string: Self.updatePageURLString), URL(string: Self.defaultMacAssetURLString))
-                }
-            }
-        }
-        return nil
-    }
-
-    private func fetchUpdateEndpoint(_ urlString: String, completion: @escaping ((tag: String, pageURL: URL?, assetURL: URL?)?) -> Void) {
-        guard let url = URL(string: urlString) else {
-            completion(nil)
-            return
-        }
-        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
-        req.setValue("KuroCat/\(currentAppVersion)", forHTTPHeaderField: "User-Agent")
-
-        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
-            guard let self else { return }
-            guard error == nil, let data, let parsed = self.parseUpdateInfo(from: data) else {
-                completion(nil)
-                return
-            }
-            completion(parsed)
-        }.resume()
-    }
-
-    private func checkForUpdates(manual: Bool) {
-        fetchUpdateEndpoint(Self.updateVersionJSONURLString) { [weak self] primary in
-            guard let self else { return }
-            if let info = primary {
-                DispatchQueue.main.async { self.handleUpdateResult(info, manual: manual) }
-                return
-            }
-            self.fetchUpdateEndpoint(Self.updatePageURLString) { [weak self] fallback in
-                guard let self else { return }
-                DispatchQueue.main.async {
-                    if let info = fallback {
-                        self.handleUpdateResult(info, manual: manual)
-                    } else if manual {
-                        self.showInfoAlert(title: "检查更新失败", message: "无法连接到更新服务器，请稍后重试或检查网络连接。")
-                    }
-                }
-            }
-        }
-    }
-
-    private func handleUpdateResult(_ info: (tag: String, pageURL: URL?, assetURL: URL?), manual: Bool) {
-        if isVersion(info.tag, newerThan: currentAppVersion),
-           let local = newestDownloadedCopy(), !isVersion(info.tag, newerThan: local.version) {
-            // The user already downloaded the latest version; they are just still running the old copy.
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.alertStyle = .informational
-            alert.messageText = "你已经下载了新版本 v\(local.version)"
-            alert.informativeText = "但现在运行的还是旧版 v\(currentAppVersion)：\n\(Bundle.main.bundlePath)\n\n新版本位置：\n\(local.url.path)\n\n点击「切换到新版本」会关闭旧版并打开新版。建议把新版拖进「应用程序」文件夹并删除旧版。"
-            alert.addButton(withTitle: "切换到新版本")
-            alert.addButton(withTitle: "稍后再说")
-            if alert.runModal() == .alertFirstButtonReturn {
-                switchToDownloadedCopy(local.url)
-            }
-            return
-        }
-        if isVersion(info.tag, newerThan: currentAppVersion) {
-            availableUpdateVersion = info.tag
-            availableUpdateURL = info.pageURL
-            availableAssetURL = info.assetURL
-            promptUpdateAvailable(latestTag: info.tag)
-        } else if manual {
-            showInfoAlert(title: "已是最新版本", message: "当前版本 v\(currentAppVersion) 已是最新版本。")
-        }
-    }
-
     private func isVersion(_ lhs: String, newerThan rhs: String) -> Bool {
         func parse(_ v: String) -> [Int] {
             let trimmed = v.trimmingCharacters(in: CharacterSet(charactersIn: "vV "))
@@ -922,167 +704,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if va != vb { return va > vb }
         }
         return false
-    }
-
-    private func promptUpdateAvailable(latestTag: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "发现 KuroCat 新版本 \(latestTag)"
-        alert.informativeText = "当前版本：v\(currentAppVersion)\n最新版本：\(latestTag)\n当前运行位置：\(Bundle.main.bundlePath)\n\n点击「立即更新」将在后台自动下载安装包并重启应用。"
-        alert.addButton(withTitle: "立即更新")
-        alert.addButton(withTitle: "打开下载页")
-        alert.addButton(withTitle: "稍后再说")
-        let resp = alert.runModal()
-        if resp == .alertFirstButtonReturn {
-            performInAppUpdate()
-        } else if resp == .alertSecondButtonReturn {
-            let fallback = URL(string: Self.updatePageURLString)!
-            NSWorkspace.shared.open(availableUpdateURL ?? fallback)
-        }
-    }
-
-    private func performInAppUpdate() {
-        guard !isUpdating else { return }
-        guard let assetURL = availableAssetURL ?? URL(string: Self.defaultMacAssetURLString) else { return }
-        isUpdating = true
-
-        var req = URLRequest(url: assetURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
-        req.setValue("KuroCat/\(currentAppVersion)", forHTTPHeaderField: "User-Agent")
-
-        URLSession.shared.downloadTask(with: req) { [weak self] tempURL, response, error in
-            guard let self else { return }
-            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard error == nil, let tempURL, httpStatus == 200 || httpStatus == 0 else {
-                DispatchQueue.main.async {
-                    self.isUpdating = false
-                    self.handleUpdateDownloadFailure()
-                }
-                return
-            }
-
-            let fm = FileManager.default
-            let workDir = fm.temporaryDirectory.appendingPathComponent("KuroCatUpdate-\(UUID().uuidString)")
-            let zipURL = workDir.appendingPathComponent("KuroCat-macOS-universal.zip")
-            let extractDir = workDir.appendingPathComponent("extracted")
-            do {
-                try fm.createDirectory(at: extractDir, withIntermediateDirectories: true)
-                try fm.copyItem(at: tempURL, to: zipURL)
-                let attrs = try fm.attributesOfItem(atPath: zipURL.path)
-                let fileSize = (attrs[.size] as? NSNumber)?.intValue ?? 0
-                guard fileSize > 50_000 else {
-                    throw NSError(domain: "KuroCatUpdate", code: 1)
-                }
-
-                let unzip = Process()
-                unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-                unzip.arguments = ["-x", "-k", zipURL.path, extractDir.path]
-                try unzip.run()
-                unzip.waitUntilExit()
-                guard unzip.terminationStatus == 0 else {
-                    throw NSError(domain: "KuroCatUpdate", code: 2)
-                }
-
-                let newAppURL = extractDir.appendingPathComponent("KuroCat.app")
-                guard fm.fileExists(atPath: newAppURL.appendingPathComponent("Contents/MacOS/KuroCat").path) else {
-                    throw NSError(domain: "KuroCatUpdate", code: 3)
-                }
-
-                let currentAppURL = Bundle.main.bundleURL
-                let parentWritable = fm.isWritableFile(atPath: currentAppURL.deletingLastPathComponent().path)
-
-                DispatchQueue.main.async {
-                    self.installDownloadedApp(newAppURL: newAppURL, currentAppURL: currentAppURL, workDir: workDir, needsAdmin: !parentWritable)
-                }
-            } catch {
-                try? fm.removeItem(at: workDir)
-                DispatchQueue.main.async {
-                    self.isUpdating = false
-                    self.handleUpdateDownloadFailure()
-                }
-            }
-        }.resume()
-    }
-
-    private func installDownloadedApp(newAppURL: URL, currentAppURL: URL, workDir: URL, needsAdmin: Bool) {
-        func shQuote(_ s: String) -> String {
-            "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
-        }
-        let pid = ProcessInfo.processInfo.processIdentifier
-        let dst = shQuote(currentAppURL.path)
-        let src = shQuote(newAppURL.path)
-        let tmp = shQuote(workDir.path)
-
-        if needsAdmin {
-            let cmd = "rm -rf \(dst).bak && mv \(dst) \(dst).bak && cp -R \(src) \(dst) && rm -rf \(dst).bak \(tmp)"
-            let escaped = cmd.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            let osa = Process()
-            osa.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            osa.arguments = ["-e", "do shell script \"\(escaped)\" with administrator privileges"]
-            do {
-                try osa.run()
-                osa.waitUntilExit()
-                if osa.terminationStatus == 0 {
-                    let relaunch = Process()
-                    relaunch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                    relaunch.arguments = ["-n", currentAppURL.path]
-                    try? relaunch.run()
-                    NSApp.terminate(nil)
-                    return
-                }
-            } catch {}
-            try? FileManager.default.removeItem(at: workDir)
-            isUpdating = false
-            handleUpdateDownloadFailure()
-            return
-        }
-
-        let script = """
-        while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done
-        rm -rf \(dst).bak
-        if mv \(dst) \(dst).bak && cp -R \(src) \(dst); then
-            rm -rf \(dst).bak
-            open -n \(dst)
-        else
-            mv \(dst).bak \(dst) 2>/dev/null
-        fi
-        rm -rf \(tmp)
-        """
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = ["-c", script]
-        do {
-            try proc.run()
-            NSApp.terminate(nil)
-        } catch {
-            try? FileManager.default.removeItem(at: workDir)
-            isUpdating = false
-            handleUpdateDownloadFailure()
-        }
-    }
-
-    private func handleUpdateDownloadFailure() {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "自动更新失败"
-        alert.informativeText = "下载或替换安装包时出错，是否打开下载页手动下载？"
-        alert.addButton(withTitle: "打开下载页")
-        alert.addButton(withTitle: "取消")
-        if alert.runModal() == .alertFirstButtonReturn {
-            let fallback = URL(string: Self.updatePageURLString)!
-            NSWorkspace.shared.open(availableUpdateURL ?? fallback)
-        }
-    }
-
-    private func showInfoAlert(title: String, message: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "好")
-        alert.runModal()
     }
 
     // MARK: - Crisp Vector Menu Bar Cat Silhouette Icon

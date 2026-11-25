@@ -1,20 +1,37 @@
 cmake_minimum_required(VERSION 3.20)
-project(KuroCat LANGUAGES CXX)
+project(XiaoheiPet LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(KuroCat WIN32
-    src/main.cpp
-    app.manifest
-)
+# Use the same committed vector paths as the macOS renderer.
+set(art_source "${CMAKE_CURRENT_SOURCE_DIR}/../Sources/XiaoheiArt.swift")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${art_source}")
+file(READ "${art_source}" art)
+set(art_header "#pragma once\n\nnamespace XiaoheiArt {\n")
+foreach(part IN ITEMS earLeft earRight head eyeWhite pupil)
+    string(REGEX MATCH "${part}D = \"([^\"]+)\"" path "${art}")
+    if(NOT path)
+        message(FATAL_ERROR "Missing Xiaohei vector path: ${part}")
+    endif()
+    string(APPEND art_header "inline constexpr char ${part}[] = \"${CMAKE_MATCH_1}\";\n")
+endforeach()
+string(REGEX MATCH [=[rightEyeTransform = CGAffineTransform\(a: ([^,]+), b: ([^,]+), c: ([^,]+), d: ([^,]+), tx: ([^,]+), ty: ([^)]+)\)]=] transform "${art}")
+if(NOT transform)
+    message(FATAL_ERROR "Missing Xiaohei eye transform")
+endif()
+string(APPEND art_header "inline constexpr float eyeTransform[] = {static_cast<float>(${CMAKE_MATCH_1}), static_cast<float>(${CMAKE_MATCH_2}), static_cast<float>(${CMAKE_MATCH_3}), static_cast<float>(${CMAKE_MATCH_4}), static_cast<float>(${CMAKE_MATCH_5}), static_cast<float>(${CMAKE_MATCH_6})};\n}\n")
+file(CONFIGURE OUTPUT XiaoheiArt.hpp CONTENT "${art_header}" @ONLY)
 
-target_compile_definitions(KuroCat PRIVATE UNICODE _UNICODE NOMINMAX _WIN32_WINNT=0x0601 WINVER=0x0601)
+add_executable(XiaoheiPet WIN32 src/main.cpp app.manifest)
+target_include_directories(XiaoheiPet PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(XiaoheiPet PRIVATE UNICODE _UNICODE NOMINMAX _WIN32_WINNT=0x0601 WINVER=0x0601)
 if(MSVC)
-    target_compile_options(KuroCat PRIVATE /O2 /utf-8 /EHsc /W3 /MT)
-    target_link_options(KuroCat PRIVATE /SUBSYSTEM:WINDOWS,6.01)
+    set_property(TARGET XiaoheiPet PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(XiaoheiPet PRIVATE /utf-8 /EHsc /W3)
+    target_link_options(XiaoheiPet PRIVATE /SUBSYSTEM:WINDOWS,6.01)
 else()
-    target_compile_options(KuroCat PRIVATE -O2 -municode)
+    target_link_options(XiaoheiPet PRIVATE -municode -static)
 endif()
 
-target_link_libraries(KuroCat PRIVATE user32 gdi32 gdiplus shell32 advapi32 winhttp wtsapi32)
+target_link_libraries(XiaoheiPet PRIVATE user32 gdi32 gdiplus shell32 advapi32 wtsapi32)

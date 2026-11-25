@@ -753,7 +753,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Adapted from chanke17/KuroCat AppDelegate.swift at 1d83d7bd.
 
     private static let releasesURL = URL(string: "https://github.com/import-ai/omnibox-pet/releases")!
-    private static let updateArchiveName = "OmniBoxPet-macOS-universal.zip"
     private static let updateAppName = "桌宠小黑.app"
     private static let updateSigningRequirement = """
     anchor apple generic and identifier "pro.omnibox.xiaohei-pet" and \
@@ -775,11 +774,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             AppDelegate.releasesURL.appendingPathComponent("tag").appendingPathComponent(tag_name)
         }
 
-        var archive: Asset? { assets.first { $0.name == AppDelegate.updateArchiveName } }
+        var archive: Asset? {
+            assets.first { $0.name == "omnibox-pet-\(tag_name)-macos-universal.zip" }
+                ?? assets.first { $0.name == "OmniBoxPet-macOS-universal.zip" }
+        }
 
-        var archiveURL: URL {
+        func archiveURL(for asset: Asset) -> URL {
             AppDelegate.releasesURL.appendingPathComponent("download").appendingPathComponent(tag_name)
-                .appendingPathComponent(AppDelegate.updateArchiveName)
+                .appendingPathComponent(asset.name)
         }
 
         static func parse(_ data: Data) -> UpdateRelease? {
@@ -873,7 +875,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         isUpdating = true
-        let request = URLRequest(url: release.archiveURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
+        let request = URLRequest(url: release.archiveURL(for: asset), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
         URLSession.shared.downloadTask(with: request) { [weak self] tempURL, response, error in
             guard let self else { return }
             let fm = FileManager.default

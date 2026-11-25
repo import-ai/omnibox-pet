@@ -14,8 +14,50 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  RELEASE_BUILD: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      macos: ${{ steps.names.outputs.macos }}
+      windows: ${{ steps.names.outputs.windows }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Name build artifacts
+        id: names
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          version=$(python3 -c 'import plistlib; print(plistlib.load(open("Resources/Info.plist", "rb"))["CFBundleShortVersionString"])')
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Expected a three-part version in Resources/Info.plist"
+            exit 1
+          fi
+          name="omnibox-pet-v${version}"
+          if [[ -n "$RELEASE_BUILD" ]]; then
+            if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+              echo "::error::Release tag must match the app version: v$version"
+              exit 1
+            fi
+          else
+            channel=manual
+            if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+              channel="pr-$PR_NUMBER"
+            elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+              channel=main
+            fi
+            name="$name-$channel-$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+          fi
+          echo "macos=$name-macos-universal" >> "$GITHUB_OUTPUT"
+          echo "windows=$name-windows-x64" >> "$GITHUB_OUTPUT"
+
   build-macos:
+    needs: prepare
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -23,16 +65,13 @@ jobs:
           persist-credentials: false
 
       - name: Import macOS signing certificate
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        if: env.RELEASE_BUILD == '1'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "$CSC_LINK" ]]; then
-            echo "::warning::CSC_LINK is unavailable. The build can use ad-hoc signing."
-            exit 0
-          fi
+          : "${CSC_LINK:?Missing CSC_LINK}"
 
           keychain="$RUNNER_TEMP/xiaohei-sign.keychain-db"
           keychain_password="$(uuidgen)"
@@ -54,21 +93,17 @@ jobs:
 
       - name: Build and verify Universal app
         env:
-          XIAOHEI_REQUIRE_STABLE_SIGNATURE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+          XIAOHEI_REQUIRE_STABLE_SIGNATURE: ${{ env.RELEASE_BUILD }}
         run: |
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
-            if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
-              echo "::error::Release tag must match the app version: v$version"
-              exit 1
-            fi
+          if [[ -z "$XIAOHEI_REQUIRE_STABLE_SIGNATURE" ]]; then
+            export XIAOHEI_SIGN_IDENTITY=-
           fi
           ./build.sh
           lipo "桌宠小黑.app/Contents/MacOS/桌宠小黑" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "桌宠小黑.app"
 
       - name: Notarize and staple the release app
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_BUILD == '1'
         env:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -100,7 +135,9 @@ jobs:
           codesign --verify --deep --strict "桌宠小黑.app"
 
       - name: Package macOS app
-        run: ditto -c -k --sequesterRsrc --keepParent "桌宠小黑.app" OmniBoxPet-macOS-universal.zip
+        env:
+          ARCHIVE_NAME: ${{ needs.prepare.outputs.macos }}.zip
+        run: ditto -c -k --sequesterRsrc --keepParent "桌宠小黑.app" "$ARCHIVE_NAME"
 
       - name: Render Xiaohei state sheet
         run: './桌宠小黑.app/Contents/MacOS/桌宠小黑 --render-xiaohei-preview xiaohei-states.png'
@@ -108,13 +145,14 @@ jobs:
       - name: Upload Universal app and state sheet
         uses: actions/upload-artifact@v4
         with:
-          name: XiaoheiPet-macOS-universal
+          name: ${{ needs.prepare.outputs.macos }}
           if-no-files-found: error
           path: |
-            OmniBoxPet-macOS-universal.zip
+            ${{ needs.prepare.outputs.macos }}.zip
             xiaohei-states.png
 
   build-windows:
+    needs: prepare
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
@@ -122,12 +160,14 @@ jobs:
           persist-credentials: false
 
       - name: Build Windows x64 app
+        env:
+          ARCHIVE_NAME: ${{ needs.prepare.outputs.windows }}.zip
         run: |
           cmake -S windows -B windows/build -A x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build windows/build --config Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -LiteralPath windows/build/Release/XiaoheiPet.exe -DestinationPath XiaoheiPet-Windows-x64.zip
+          Compress-Archive -LiteralPath windows/build/Release/XiaoheiPet.exe -DestinationPath $env:ARCHIVE_NAME
 
       - name: Smoke test Windows app
         run: |
@@ -143,12 +183,12 @@ jobs:
       - name: Upload Windows x64 app
         uses: actions/upload-artifact@v4
         with:
-          name: XiaoheiPet-Windows-x64
+          name: ${{ needs.prepare.outputs.windows }}
           if-no-files-found: error
-          path: XiaoheiPet-Windows-x64.zip
+          path: ${{ needs.prepare.outputs.windows }}.zip
 
   release:
-    needs: [build-macos, build-windows]
+    needs: [prepare, build-macos, build-windows]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -157,13 +197,13 @@ jobs:
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: XiaoheiPet-macOS-universal
+          name: ${{ needs.prepare.outputs.macos }}
           path: dist
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: XiaoheiPet-Windows-x64
+          name: ${{ needs.prepare.outputs.windows }}
           path: dist
 
       - name: Publish GitHub Release
@@ -171,6 +211,6 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/OmniBoxPet-macOS-universal.zip
-            dist/XiaoheiPet-Windows-x64.zip
+            dist/${{ needs.prepare.outputs.macos }}.zip
+            dist/${{ needs.prepare.outputs.windows }}.zip
           fail_on_unmatched_files: true

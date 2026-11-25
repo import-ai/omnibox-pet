@@ -968,10 +968,10 @@ func renderXiaoheiPreview(to path: String, dark: Bool) {
         ("10. 被拎起来 > <", true, { p in
             p.scruffDrag.value = 1; p.scruffSwing.value = 0.12; p.earFold.value = 0.4
         }),
-        ("11. 趴在桌边睡", true, { p in
+        ("11. 趴在键盘后睡", true, { p in
             p.lieIntensity.value = 1; p.setPreviewMoods(sleepiness: 1)
         }),
-        ("12. 只露脑袋（关闭小手）", false, { p in
+        ("12. 只露脑袋（关闭小爪）", false, { p in
             p.triggerKeyDown(.k); p.floatingKeycaps[0].age = 0.25
             pawsAt(p, CatPhysics.leftPawRest, KeyboardLayout.canvasPoint(for: .k))
             p.headPitch.value = 0.6; p.eyeGaze.x.value = 0.4; p.eyeGaze.y.value = 0.7

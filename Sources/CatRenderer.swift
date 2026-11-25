@@ -98,11 +98,6 @@ enum CatRenderer {
             return .head
         }
 
-        // Desk surface (allows dragging by grabbing the desk)
-        if XiaoheiRenderer.deskHitRect.contains(p) {
-            return .body
-        }
-
         // Mini keyboard & mouse area (allows dragging by grabbing keyboard too)
         let kbRect = CGRect(x: 58, y: 232, width: 236, height: 64)
         if kbRect.contains(p) {
@@ -133,17 +128,16 @@ enum CatRenderer {
         let scruff = max(0, min(1, physics.scruffDrag.value))
         let lie = max(0, min(1, physics.lieIntensity.value))
         let dizzy = max(0, min(1, physics.dizzyIntensity.value))
-        let showArms = settings.xiaoheiPaws
+        let showPaws = settings.xiaoheiPaws
 
-        // Peeking layout: Xiaohei hides behind the far edge of a small desk, so draw the head first,
-        // then the desk (covering the lower head), the mouse/keyboard on it, and finally the arms.
-        XiaoheiRenderer.drawHead(in: ctx, physics: physics, showPaws: showArms)
-        XiaoheiRenderer.drawDesk(in: ctx)
+        // Peeking layout: Xiaohei hides behind the keyboard, so draw the head first, then the
+        // mouse/keyboard in front of it (covering the lower head), and finally the floating paws.
+        XiaoheiRenderer.drawHead(in: ctx, physics: physics, showPaws: showPaws)
 
         // 1. Mini White Mouse OR Graphics Tablet (when drawing tablet/stylus is connected!)
         if physics.isTabletActive {
             drawTablet(in: ctx, physics: physics, theme: settings.keyboardTheme, eyeTheme: settings.eyeTheme)
-            if !showArms || !physics.leftPawOnMouse || scruff > 0.25 || dizzy > 0.35 || lie > 0.45 {
+            if !showPaws || !physics.leftPawOnMouse || scruff > 0.25 || dizzy > 0.35 || lie > 0.45 {
                 drawParkedStylus(in: ctx, theme: settings.keyboardTheme, eyeTheme: settings.eyeTheme)
             }
         } else {
@@ -153,9 +147,9 @@ enum CatRenderer {
         // 2. Mini Angled 65% Mechanical Keyboard + Dynamic Keycap Glow
         drawKeyboard(in: ctx, physics: physics, theme: settings.keyboardTheme, eyeTheme: settings.eyeTheme, showLegends: settings.showKeyLegends, flipped: flipped, marquee: settings.keyboardMarquee)
 
-        // 3. Arms reaching over the desk edge onto the keyboard and mouse (derived design, switchable).
-        if showArms {
-            XiaoheiRenderer.drawArms(in: ctx, physics: physics)
+        // 3. Detached floating paws on the keyboard and mouse (derived design, switchable).
+        if showPaws {
+            XiaoheiRenderer.drawPaws(in: ctx, physics: physics)
             if physics.isTabletActive && physics.leftPawOnMouse && scruff <= 0.25 && dizzy <= 0.35 && lie <= 0.45 {
                 drawHeldStylus(in: ctx, physics: physics, theme: settings.keyboardTheme, eyeTheme: settings.eyeTheme)
             }
@@ -164,7 +158,7 @@ enum CatRenderer {
 
         // Upright orbiting golden dizzy stars floating right above the head
         if dizzy > 0.10 {
-            let head = XiaoheiRenderer.headCenter(physics, showPaws: showArms)
+            let head = XiaoheiRenderer.headCenter(physics, showPaws: showPaws)
             let worldHeadX = head.x
             let worldHeadY = head.y
             let dAlpha = min(1.0, (dizzy - 0.10) / 0.22)

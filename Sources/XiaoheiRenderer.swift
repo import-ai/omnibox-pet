@@ -8,9 +8,10 @@ import CoreGraphics
 /// Emotions use gaze, eye shape, tilt and external symbols only.
 ///
 /// Desktop-pet adaptation (derived design, draft, requested by the project owner): Xiaohei peeks out
-/// from behind the far edge of a small desk and reaches over it with two arms to type and use the mouse.
-/// The arms contradict the base "no limbs" identity and exist only in this pet; they can be switched
-/// off, leaving just the peeking head, which then nods toward the keys.
+/// from behind the keyboard, which hides the lower half of the head. Two detached floating paws press
+/// the keys and the mouse; they follow the floating paw language of the 「记笔记」/「赶工」 stickers and
+/// never connect to the head. They can be switched off, leaving just the peeking head, which then nods
+/// toward the keys.
 enum XiaoheiRenderer {
     static let ink = CGColor(srgbRed: 23.0 / 255.0, green: 23.0 / 255.0, blue: 23.0 / 255.0, alpha: 1)
     static let cream = CGColor(srgbRed: 254.0 / 255.0, green: 246.0 / 255.0, blue: 236.0 / 255.0, alpha: 1)
@@ -20,21 +21,22 @@ enum XiaoheiRenderer {
     /// Head pivot in SVG space (horizontal centre, vertical centre of the head without ears).
     private static let svgPivot = CGPoint(x: 320, y: 413)
     private static let svgChinY: CGFloat = 594
-    /// Canvas Y of the head pivot at rest: the eyes sit just above the desk edge, the chin hides behind it.
-    private static let restHeadY: CGFloat = 188
-
-    // MARK: - Desk
-
-    /// Far edge of the desk; everything of the head below it is hidden by the desk top.
-    static let edgeY: CGFloat = 220
-    private static let deskTop = CGRect(x: 30, y: edgeY, width: 304, height: 84)
-    private static let deskThickness: CGFloat = 8
-    static let deskHitRect = CGRect(x: 30, y: edgeY, width: 304, height: 84 + 8)
+    /// Canvas Y of the head pivot at rest: the eyes sit just above the keyboard, the chin hides behind it.
+    private static let restHeadY: CGFloat = 208
     /// Lift of the dizzy stars above the head pivot.
     static let starLift: CGFloat = 92
-    private static let deskTopColor = CGColor(srgbRed: 0.918, green: 0.875, blue: 0.804, alpha: 1)
-    private static let deskFrontColor = CGColor(srgbRed: 0.788, green: 0.706, blue: 0.592, alpha: 1)
-    private static let deskEdgeColor = CGColor(srgbRed: 0.969, green: 0.941, blue: 0.898, alpha: 1)
+
+    // MARK: - Keyboard occlusion
+
+    /// Far (top) edge of the keyboard chassis, matching `CatRenderer.makeKeyboardArtwork`.
+    private static let kbEdgeLeft = KeyboardLayout.screenQuadPoint(su: -0.012, sv: -0.04)
+    private static let kbEdgeRight = KeyboardLayout.screenQuadPoint(su: 1.012, sv: -0.04)
+
+    /// Canvas Y of the keyboard's far edge (extended as a line) at `x`; the head is hidden below it.
+    static func keyboardEdgeY(at x: CGFloat) -> CGFloat {
+        let t = (x - kbEdgeLeft.x) / (kbEdgeRight.x - kbEdgeLeft.x)
+        return kbEdgeLeft.y + (kbEdgeRight.y - kbEdgeLeft.y) * t
+    }
 
     // MARK: - Geometry (parsed once from the generated V14 path data)
 
@@ -83,14 +85,14 @@ enum XiaoheiRenderer {
         let hunt = clamp01(p.huntIntensity.value)
         let dizzyFall = smooth((p.dizzyIntensity.value - 0.5) / 0.5)
         let x = CatPhysics.seatAnchor.x + p.bodyShiftX.value + p.bodyTilt.value * 30 + p.headYaw.value * 4
-        // Sink behind the desk when stalking, dozing or slumped; rise when the window is carried.
+        // Sink behind the keyboard when stalking, dozing or slumped; rise when the window is carried.
         var y = restHeadY + p.headOffsetY.value * 0.8 + p.headPitch.value * 3 + p.breathingOffset * 1.4
             + hunt * 5 + p.sleepiness * 6 + lie * 8 + dizzyFall * 14 - scruff * 24
 
         // 3-key easter egg: a quick head-bonk nod toward the third key.
         y += 8 * clamp01(p.hindFootActive.value)
 
-        // Arms off: nod toward the key being typed.
+        // Paws off: nod toward the key being typed.
         if !showPaws {
             let r = p.rightPaw.point
             var dy = r.y - CatPhysics.rightPawRest.y
@@ -115,7 +117,7 @@ enum XiaoheiRenderer {
     // MARK: - Hit testing
 
     static func hitTestHead(point pt: CGPoint, physics: CatPhysics, showPaws: Bool) -> Bool {
-        guard pt.y < edgeY else { return false }
+        guard pt.y < keyboardEdgeY(at: pt.x) else { return false }
         let c = headCenter(physics, showPaws: showPaws)
         // Ears + head span SVG y 148...594; the ellipse covers both with a small margin.
         let cy = c.y + (371 - svgPivot.y) * k
@@ -126,11 +128,20 @@ enum XiaoheiRenderer {
 
     // MARK: - Drawing
 
-    /// Head only; the desk drawn afterwards covers everything below `edgeY`.
+    /// Head only, clipped at the keyboard's far edge; the keyboard drawn afterwards sits in front of it.
     static func drawHead(in ctx: CGContext, physics p: CatPhysics, showPaws: Bool) {
         let center = headCenter(p, showPaws: showPaws)
 
         ctx.saveGState()
+        let w = CatPhysics.canvasSize.width
+        let visible = CGMutablePath()
+        visible.move(to: .zero)
+        visible.addLine(to: CGPoint(x: w, y: 0))
+        visible.addLine(to: CGPoint(x: w, y: keyboardEdgeY(at: w)))
+        visible.addLine(to: CGPoint(x: 0, y: keyboardEdgeY(at: 0)))
+        visible.closeSubpath()
+        ctx.addPath(visible)
+        ctx.clip()
         let sq = p.bodySquash.value
         let sx = 1 + (1 - sq) * 0.25
         let sy = 1 - (1 - sq) * 0.45
@@ -161,30 +172,6 @@ enum XiaoheiRenderer {
 
         drawEyes(in: ctx, physics: p, yaw: yaw, pitch: pitch)
         drawAngerMark(in: ctx, physics: p, yaw: yaw)
-        ctx.restoreGState()
-    }
-
-    /// Small desk top with a visible front face; its far edge is where Xiaohei peeks out.
-    static func drawDesk(in ctx: CGContext) {
-        ctx.saveGState()
-        let r: CGFloat = 14
-        // Soft contact shadow under the desk.
-        ctx.setFillColor(ink.copy(alpha: 0.10) ?? ink)
-        ctx.fillEllipse(in: CGRect(x: deskTop.minX + 10, y: deskTop.maxY + deskThickness - 3,
-                                   width: deskTop.width - 20, height: 9))
-        let front = deskTop.offsetBy(dx: 0, dy: deskThickness)
-        ctx.addPath(CGPath(roundedRect: front, cornerWidth: r, cornerHeight: r, transform: nil))
-        ctx.setFillColor(deskFrontColor)
-        ctx.fillPath()
-        ctx.addPath(CGPath(roundedRect: deskTop, cornerWidth: r, cornerHeight: r, transform: nil))
-        ctx.setFillColor(deskTopColor)
-        ctx.fillPath()
-        // Highlight along the far edge so the head reads as hidden behind it.
-        ctx.move(to: CGPoint(x: deskTop.minX + r, y: edgeY + 1))
-        ctx.addLine(to: CGPoint(x: deskTop.maxX - r, y: edgeY + 1))
-        ctx.setStrokeColor(deskEdgeColor)
-        ctx.setLineWidth(2)
-        ctx.strokePath()
         ctx.restoreGState()
     }
 
@@ -229,6 +216,13 @@ enum XiaoheiRenderer {
             ctx.scaleBy(x: fx, y: fy)
             ctx.translateBy(x: -e.center.x, y: -e.center.y)
 
+            // The eye white never changes; every expression only replaces the pupil drawn inside it.
+            ctx.setFillColor(cream)
+            ctx.addPath(e.white)
+            ctx.fillPath()
+            ctx.addPath(e.white)
+            ctx.clip()
+
             if dizzy > 0.25 {
                 drawSpiral(in: ctx, eye: e, phase: p.dizzyPhase, alpha: clamp01((dizzy - 0.25) / 0.2))
             } else if scruff > 0.35 {
@@ -238,42 +232,41 @@ enum XiaoheiRenderer {
             } else if closure > 0.86 {
                 drawClosedLine(in: ctx, eye: e, happy: false)
             } else {
-                drawOpenEye(in: ctx, eye: e, physics: p, lid: max(closure, anger * 0.42), anger: anger, hunt: hunt)
+                drawPupil(in: ctx, eye: e, physics: p, lid: max(closure, anger * 0.42), anger: anger, hunt: hunt)
             }
             ctx.restoreGState()
         }
     }
 
-    private static func drawOpenEye(in ctx: CGContext, eye e: EyeGeometry, physics p: CatPhysics,
-                                    lid: CGFloat, anger: CGFloat, hunt: CGFloat) {
-        let r = e.radius, c = e.center
+    /// Open pupil; blinking and the angry/sleepy lid cut the pupil from the top, the white stays whole.
+    private static func drawPupil(in ctx: CGContext, eye e: EyeGeometry, physics p: CatPhysics,
+                                  lid: CGFloat, anger: CGFloat, hunt: CGFloat) {
+        let r = e.radius
+        let ps = max(0.8, min(1.3, p.pupilScale.value)) * (1 + hunt * 0.30)
+        let pr = e.pupilRadius * ps
+        let travel = max(0, (r - pr) * 0.85)
+        var g = p.eyeGaze.point
+        let gl = hypot(g.x, g.y)
+        if gl > 1 { g = CGPoint(x: g.x / gl, y: g.y / gl) }
+        let pc = CGPoint(x: e.pupilCenter.x + g.x * travel, y: e.pupilCenter.y + g.y * travel * 0.9)
+
         if lid > 0.01 {
-            // Flat upper lid (「思考中」 sticker); anger slants it down toward the inner corners.
-            let base = c.y - r + lid * 2 * r
-            let inner = base + anger * 0.30 * r
-            let outer = base - anger * 0.12 * r
-            let innerX = c.x - e.side * 1.6 * r, outerX = c.x + e.side * 1.6 * r
+            // Flat top on the pupil (「思考中」 sticker); anger slants it down toward the inner corners.
+            let base = pc.y - pr + lid * 2 * pr
+            let inner = base + anger * 0.30 * pr
+            let outer = base - anger * 0.12 * pr
+            let innerX = pc.x - e.side * 1.6 * pr, outerX = pc.x + e.side * 1.6 * pr
             let clip = CGMutablePath()
             clip.move(to: CGPoint(x: innerX, y: inner))
             clip.addLine(to: CGPoint(x: outerX, y: outer))
-            clip.addLine(to: CGPoint(x: outerX, y: c.y + 2 * r))
-            clip.addLine(to: CGPoint(x: innerX, y: c.y + 2 * r))
+            clip.addLine(to: CGPoint(x: outerX, y: pc.y + 2 * pr))
+            clip.addLine(to: CGPoint(x: innerX, y: pc.y + 2 * pr))
             clip.closeSubpath()
             ctx.addPath(clip)
             ctx.clip()
         }
-        ctx.setFillColor(cream)
-        ctx.addPath(e.white)
-        ctx.fillPath()
 
-        ctx.addPath(e.white)
-        ctx.clip()
-        let ps = max(0.8, min(1.3, p.pupilScale.value)) * (1 + hunt * 0.30)
-        let travel = max(0, (r - e.pupilRadius * ps) * 0.85)
-        var g = p.eyeGaze.point
-        let gl = hypot(g.x, g.y)
-        if gl > 1 { g = CGPoint(x: g.x / gl, y: g.y / gl) }
-        var t = CGAffineTransform(translationX: e.pupilCenter.x + g.x * travel, y: e.pupilCenter.y + g.y * travel * 0.9)
+        var t = CGAffineTransform(translationX: pc.x, y: pc.y)
         t = t.scaledBy(x: ps, y: ps)
         t = t.translatedBy(x: -e.pupilCenter.x, y: -e.pupilCenter.y)
         ctx.setFillColor(ink)
@@ -281,15 +274,15 @@ enum XiaoheiRenderer {
         ctx.fillPath()
     }
 
-    private static func strokeCream(_ ctx: CGContext, width: CGFloat) {
-        ctx.setStrokeColor(cream)
+    private static func strokeInk(_ ctx: CGContext, width: CGFloat) {
+        ctx.setStrokeColor(ink)
         ctx.setLineWidth(width)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
         ctx.strokePath()
     }
 
-    /// Closed eyes: `^` when happily petted, a gentle `︶` when blinking or sleeping.
+    /// Closed pupils drawn on the white: `^` when happily petted, a gentle `︶` when blinking or sleeping.
     private static func drawClosedLine(in ctx: CGContext, eye e: EyeGeometry, happy: Bool) {
         let r = e.radius, c = e.center
         if happy {
@@ -299,7 +292,7 @@ enum XiaoheiRenderer {
             ctx.move(to: CGPoint(x: c.x - 0.62 * r, y: c.y))
             ctx.addQuadCurve(to: CGPoint(x: c.x + 0.62 * r, y: c.y), control: CGPoint(x: c.x, y: c.y + 0.42 * r))
         }
-        strokeCream(ctx, width: 14)
+        strokeInk(ctx, width: 18)
     }
 
     /// `> <` squeezed eyes (「加油」/「赞」 stickers) while being carried around.
@@ -309,7 +302,7 @@ enum XiaoheiRenderer {
         ctx.move(to: CGPoint(x: c.x - s * 0.45 * r, y: c.y - 0.42 * r))
         ctx.addLine(to: CGPoint(x: c.x + s * 0.42 * r, y: c.y))
         ctx.addLine(to: CGPoint(x: c.x - s * 0.45 * r, y: c.y + 0.42 * r))
-        strokeCream(ctx, width: 14)
+        strokeInk(ctx, width: 18)
     }
 
     private static func drawSpiral(in ctx: CGContext, eye e: EyeGeometry, phase: CGFloat, alpha: CGFloat) {
@@ -324,8 +317,8 @@ enum XiaoheiRenderer {
             if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
         }
         ctx.addPath(path)
-        ctx.setStrokeColor(cream.copy(alpha: alpha) ?? cream)
-        ctx.setLineWidth(11)
+        ctx.setStrokeColor(ink.copy(alpha: alpha) ?? ink)
+        ctx.setLineWidth(12)
         ctx.setLineCap(.round)
         ctx.strokePath()
     }
@@ -351,86 +344,61 @@ enum XiaoheiRenderer {
         ctx.restoreGState()
     }
 
-    // MARK: Arms over the desk edge (derived design)
+    // MARK: Floating paws (derived design)
 
-    static func drawArms(in ctx: CGContext, physics p: CatPhysics) {
+    static func drawPaws(in ctx: CGContext, physics p: CatPhysics) {
         let head = headCenter(p, showPaws: true)
         let lie = smooth(p.lieIntensity.value)
-        // Physics assigns keys by QWERTY hand, but the keyboard faces Xiaohei (mirrored for the viewer).
-        // Pair shoulders with paws by on-screen position so the arms never cross.
-        let a = p.leftPaw.point, b = p.rightPaw.point
-        let (viewerLeft, viewerRight) = a.x <= b.x ? (a, b) : (b, a)
-        let arms: [(CGPoint, CGFloat)] = [(viewerLeft, -1), (viewerRight, 1)]
-        for (rawPos, s) in arms {
-            // Idle paws rest a little forward on the desk so the forearms show draped over the edge.
-            let rest = s < 0 ? CatPhysics.leftPawRest : CatPhysics.rightPawRest
-            let restness = 1 - clamp01(hypot(rawPos.x - rest.x, rawPos.y - rest.y) / 14)
-            let idleSpot = CGPoint(x: head.x + s * 40, y: edgeY + 19)
-            let pos = CGPoint(x: rawPos.x + (idleSpot.x - rawPos.x) * restness,
-                              y: rawPos.y + (idleSpot.y - rawPos.y) * restness)
-            // Lying down: forearms fold together just past the edge, like napping on a desk.
-            let fold = CGPoint(x: head.x + s * 18, y: edgeY + 15)
-            var end = CGPoint(x: pos.x + (fold.x - pos.x) * lie, y: pos.y + (fold.y - pos.y) * lie)
-            end.y = max(end.y, edgeY + 10)
-            // Shoulders sit behind the desk; the arm starts above the edge and is cut flat there, so it
-            // reads as reaching up from below and over the lip.
-            let root = CGPoint(x: head.x + s * 54, y: edgeY - 12)
-            let dx = end.x - root.x, dy = end.y - root.y
-            let len = max(1, hypot(dx, dy))
-            let dir = CGPoint(x: dx / len, y: dy / len)
-            let tip = CGPoint(x: end.x - dir.x * 5, y: end.y - dir.y * 5)
-            // Elbow bulges outward and lies on the desk, giving a relaxed draped curve.
-            let ctrl = CGPoint(x: (root.x + tip.x) * 0.5 + s * min(10, len * 0.12),
-                               y: (root.y + tip.y) * 0.5 + 2)
-            let arm = CGMutablePath()
-            arm.move(to: root)
-            arm.addQuadCurve(to: tip, control: ctrl)
+        let paws: [(CGPoint, CGPoint, CGFloat)] = [
+            (p.leftPaw.point, CatPhysics.leftPawRest, -1),
+            (p.rightPaw.point, CatPhysics.rightPawRest, 1),
+        ]
+        for (rawPos, rest, s) in paws {
+            let resting = 1 - clamp01(hypot(rawPos.x - rest.x, rawPos.y - rest.y) / 12)
+            // The physics rest spots sit above the keyboard, over the hidden chin; idle paws float over
+            // the near (spacebar) row on either side of the face instead, so they never cover the face.
+            let ix = head.x + s * 46
+            let idle = CGPoint(x: ix, y: keyboardEdgeY(at: ix) + 14)
+            let pos = CGPoint(x: rawPos.x + (idle.x - rawPos.x) * resting,
+                              y: rawPos.y + (idle.y - rawPos.y) * resting)
+            var c = pos
+            // Resting paws bob slightly out of phase with the head, so they read as floating.
+            c.y -= (1.5 + sin(p.time * 2.1 + s * 0.9) * 1.3) * resting
+            // Lying down: paws tuck in beside the cheeks, resting on the keyboard's far edge.
+            let tx = head.x + s * 44
+            let tuck = CGPoint(x: tx, y: keyboardEdgeY(at: tx) + 8)
+            c = CGPoint(x: c.x + (tuck.x - c.x) * lie, y: c.y + (tuck.y - c.y) * lie)
 
+            // Contact shadow on the keyboard/mouse.
             ctx.saveGState()
-            ctx.clip(to: CGRect(x: 0, y: edgeY - 2, width: CatPhysics.canvasSize.width, height: CatPhysics.canvasSize.height))
-            // Contact shadow of the forearm and paw on the desk.
-            ctx.setFillColor(ink.copy(alpha: 0.14 * (1 - lie * 0.5)) ?? ink)
-            ctx.fillEllipse(in: CGRect(x: end.x - 9, y: end.y - 1, width: 18, height: 5.5))
-            ctx.addPath(arm)
-            ctx.setLineCap(.butt)
-            ctx.setStrokeColor(cream.copy(alpha: 0.95) ?? cream)
-            ctx.setLineWidth(16)
-            ctx.strokePath()
-            ctx.addPath(arm)
-            ctx.setStrokeColor(ink)
-            ctx.setLineWidth(12.5)
-            ctx.strokePath()
+            ctx.setFillColor(ink.copy(alpha: 0.16 * (1 - lie)) ?? ink)
+            ctx.fillEllipse(in: CGRect(x: pos.x - 8, y: pos.y - 1, width: 16, height: 5))
             ctx.restoreGState()
 
-            drawPaw(in: ctx, at: end, direction: dir, physics: p)
+            ctx.saveGState()
+            ctx.translateBy(x: c.x, y: c.y - 6.5)
+            ctx.rotate(by: s * 0.16 + p.headTilt.value * 0.3)
+            let paw = CGMutablePath()
+            paw.move(to: CGPoint(x: -10.5, y: 2))
+            paw.addCurve(to: CGPoint(x: 10.5, y: 2), control1: CGPoint(x: -10.5, y: -10.5), control2: CGPoint(x: 10.5, y: -10.5))
+            paw.addCurve(to: CGPoint(x: -10.5, y: 2), control1: CGPoint(x: 9.5, y: 8.8), control2: CGPoint(x: -9.5, y: 8.8))
+            paw.closeSubpath()
+            ctx.addPath(paw)
+            ctx.setStrokeColor(cream.copy(alpha: 0.95) ?? cream)
+            ctx.setLineWidth(2.6)
+            ctx.strokePath()
+            ctx.addPath(paw)
+            ctx.setFillColor(ink)
+            ctx.fillPath()
+            // Two toe separations on the front edge (「记笔记」 sticker paw language).
+            ctx.move(to: CGPoint(x: -3.6, y: 7.0)); ctx.addLine(to: CGPoint(x: -3.1, y: 3.4))
+            ctx.move(to: CGPoint(x: 3.6, y: 7.0)); ctx.addLine(to: CGPoint(x: 3.1, y: 3.4))
+            ctx.setStrokeColor(cream.copy(alpha: 0.9) ?? cream)
+            ctx.setLineWidth(1.2)
+            ctx.setLineCap(.round)
+            ctx.strokePath()
+            ctx.restoreGState()
         }
-    }
-
-    private static func drawPaw(in ctx: CGContext, at end: CGPoint, direction dir: CGPoint, physics p: CatPhysics) {
-        ctx.saveGState()
-        ctx.translateBy(x: end.x - dir.x * 4, y: end.y - dir.y * 4)
-        // Local +y (toes) points along the reach direction.
-        ctx.rotate(by: atan2(dir.y, dir.x) - .pi / 2)
-        let paw = CGMutablePath()
-        paw.move(to: CGPoint(x: -10, y: -2))
-        paw.addCurve(to: CGPoint(x: 10, y: -2), control1: CGPoint(x: -10, y: -11), control2: CGPoint(x: 10, y: -11))
-        paw.addCurve(to: CGPoint(x: -10, y: -2), control1: CGPoint(x: 10.5, y: 10), control2: CGPoint(x: -10.5, y: 10))
-        paw.closeSubpath()
-        ctx.addPath(paw)
-        ctx.setStrokeColor(cream.copy(alpha: 0.95) ?? cream)
-        ctx.setLineWidth(2.6)
-        ctx.strokePath()
-        ctx.addPath(paw)
-        ctx.setFillColor(ink)
-        ctx.fillPath()
-        // Two toe separations on the front edge (「记笔记」 sticker paw language).
-        ctx.move(to: CGPoint(x: -3.6, y: 6.6)); ctx.addLine(to: CGPoint(x: -3.0, y: 2.8))
-        ctx.move(to: CGPoint(x: 3.6, y: 6.6)); ctx.addLine(to: CGPoint(x: 3.0, y: 2.8))
-        ctx.setStrokeColor(cream.copy(alpha: 0.9) ?? cream)
-        ctx.setLineWidth(1.2)
-        ctx.setLineCap(.round)
-        ctx.strokePath()
-        ctx.restoreGState()
     }
 
     /// Small pop rays on the 3rd (head bonk) and 4th simultaneous keys; Xiaohei has no foot or tail.

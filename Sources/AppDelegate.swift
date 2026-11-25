@@ -363,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         editItem.state = settings.isEditMode ? .on : .off
         menu.addItem(editItem)
 
-        let pawsItem = NSMenuItem(title: tr("显示小手（关闭后只露出脑袋）", "Show Arms (Off: Head Only)"), action: #selector(toggleXiaoheiPaws), keyEquivalent: "")
+        let pawsItem = NSMenuItem(title: tr("显示悬浮小爪（关闭后只露出脑袋）", "Floating Paws (Off: Head Only)"), action: #selector(toggleXiaoheiPaws), keyEquivalent: "")
         pawsItem.target = self
         pawsItem.state = settings.xiaoheiPaws ? .on : .off
         menu.addItem(pawsItem)

@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include "KeyMap.hpp"
 #include "InputEngine.hpp"
+#include "../../shared/SkinSpec.hpp"
 
 enum class CatCoatTheme : int {
     ClassicBlack = 0,
@@ -45,8 +46,11 @@ struct CatSettings {
     bool autoHideFullscreen = false;
     int tabletMode = 0; // 0 = auto-detect tablet/stylus, 1 = always tablet, 2 = always mouse
     bool flipHorizontal = false;
+    float rotationDeg = 0.0f; // -180..180 degrees
+    bool whiteOutline = true;
+    bool enableAnger = true;
     bool isEnglish = false;
-    bool isEditMode = false; // runtime-only interactive resize & flip box
+    bool isEditMode = false; // runtime-only interactive resize & rotate box
     bool petInteraction = true;
     bool fullClickThrough = false;
     bool alwaysOnTop = true;
@@ -59,6 +63,8 @@ struct CatSettings {
     EyeColorTheme eyeTheme = EyeColorTheme::NeonChartreuse;
     // Content id of the imported .kurocat skin in use; empty = the built-in coatTheme.
     std::string customSkin;
+    // Content id of the imported .kurokb / keyboard.json skin in use; empty = the built-in keyboardTheme.
+    std::string customKeyboard;
     int posX = -99999;
     int posY = -99999;
 
@@ -94,6 +100,9 @@ struct CatSettings {
                 else if (k == "autoHideFullscreen") autoHideFullscreen = (std::stoi(v) != 0);
                 else if (k == "tabletMode") tabletMode = std::clamp(std::stoi(v), 0, 2);
                 else if (k == "flipHorizontal") flipHorizontal = (std::stoi(v) != 0);
+                else if (k == "rotationDeg") rotationDeg = std::clamp(std::stof(v), -180.0f, 180.0f);
+                else if (k == "whiteOutline") whiteOutline = (std::stoi(v) != 0);
+                else if (k == "enableAnger") enableAnger = (std::stoi(v) != 0);
                 else if (k == "isEnglish") isEnglish = (std::stoi(v) != 0);
                 else if (k == "petInteraction") petInteraction = (std::stoi(v) != 0);
                 else if (k == "fullClickThrough") fullClickThrough = (std::stoi(v) != 0);
@@ -104,6 +113,7 @@ struct CatSettings {
                 else if (k == "keyboardTheme") keyboardTheme = (KeyboardTheme)std::clamp(std::stoi(v), 0, 2);
                 else if (k == "eyeTheme") eyeTheme = (EyeColorTheme)std::clamp(std::stoi(v), 0, 5);
                 else if (k == "customSkin") customSkin = v.size() == 16 && v.find_first_not_of("0123456789abcdef") == std::string::npos ? v : "";
+                else if (k == "customKeyboard") customKeyboard = v.size() == 16 && v.find_first_not_of("0123456789abcdef") == std::string::npos ? v : "";
                 else if (k == "posX") posX = std::stoi(v);
                 else if (k == "posY") posY = std::stoi(v);
             } catch (...) {}
@@ -128,6 +138,9 @@ struct CatSettings {
           << "autoHideFullscreen=" << (autoHideFullscreen ? 1 : 0) << "\n"
           << "tabletMode=" << tabletMode << "\n"
           << "flipHorizontal=" << (flipHorizontal ? 1 : 0) << "\n"
+          << "rotationDeg=" << rotationDeg << "\n"
+          << "whiteOutline=" << (whiteOutline ? 1 : 0) << "\n"
+          << "enableAnger=" << (enableAnger ? 1 : 0) << "\n"
           << "isEnglish=" << (isEnglish ? 1 : 0) << "\n"
           << "petInteraction=" << (petInteraction ? 1 : 0) << "\n"
           << "fullClickThrough=" << (fullClickThrough ? 1 : 0) << "\n"
@@ -137,7 +150,8 @@ struct CatSettings {
           << "coatTheme=" << (int)coatTheme << "\n"
           << "keyboardTheme=" << (int)keyboardTheme << "\n"
           << "eyeTheme=" << (int)eyeTheme << "\n"
-          << "customSkin=" << customSkin << "\n";
+          << "customSkin=" << customSkin << "\n"
+          << "customKeyboard=" << customKeyboard << "\n";
         if (posX != -99999 && posY != -99999) {
             f << "posX=" << posX << "\nposY=" << posY << "\n";
         }
@@ -224,12 +238,17 @@ public:
     Spring1D huntIntensity{0.0f};
     Spring1D scruffDrag{0.0f};
     Spring1D scruffSwing{0.0f};
+    Spring1D scruffSwingY{0.0f};
+    Spring1D scruffTailSwing{0.0f};
     Spring1D lieIntensity{0.0f};
     Spring1D angerIntensity{0.0f};
     Spring1D dizzyIntensity{0.0f};
     float dizzyPhase = 0.0f;
     bool isScruffDragging_ = false;
     float scruffDragDx_ = 0.0f;
+    float scruffDragDy_ = 0.0f;
+    float scruffDragAccumX_ = 0.0f;
+    float scruffDragAccumY_ = 0.0f;
     float fastMouseDuration_ = 0.0f;
     float dizzyTimer_ = 0.0f;
     Spring2D mouseOffset{{0.0f, 0.0f}};
@@ -270,6 +289,29 @@ public:
     bool isYawning_ = false;
     bool hasYawnedThisIdle_ = false;
 
+    // Video-2 Xiao Douni independent signed slap arm springs (-1 = slammed on key, 0 = ready, +1 = high windup)
+    int douniSlapSide = 0;
+    float douniSlapTimer = 0.0f;
+    double douniLastLeftKeyTime = -10.0;
+    double douniLastRightKeyTime = -10.0;
+    Spring1D douniLeftRaise{0.0f};
+    Spring1D douniRightRaise{0.0f};
+    Spring2D douniLeftKeyTarget{{318.0f, 422.0f}};
+    Spring2D douniRightKeyTarget{{512.0f, 462.0f}};
+    Spring1D douniMouseBlend{0.0f};
+    Spring1D douniLoafBlend{0.0f};
+    float scruffHoldTime = 0.0f;
+    float scruffDropTimer = 0.0f;
+    // Disney 12-principles tactile keyboard impact recoil, tilt shudder & keycap spark burst
+    Spring1D kbImpactY{0.0f};
+    Spring1D kbImpactTilt{0.0f};
+    float kbSparkTimer = 0.0f;
+    PhysicalKey kbSparkKey = PhysicalKey::None;
+
+    float blinkProgress() const { return blinkProgress_; }
+    bool isScruffDragging() const { return isScruffDragging_; }
+    float breathingOffset() const { return std::sin(time * 2.1f) * 1.6f; }
+
     float effectiveEyeClosure() const {
         float petClose = std::max(petHeadIntensity, petBodyIntensity * 0.62f);
         float sleepClose = std::max(sleepiness * 0.92f, yawnAmount * 0.96f);
@@ -279,7 +321,10 @@ public:
     bool isHappyClosedEyes() const { return petHeadIntensity > 0.45f; }
     bool isBlissfulSquint() const { return petBodyIntensity > 0.35f && !isHappyClosedEyes(); }
 
-    void triggerKeyDown(PhysicalKey key, const CatSettings& settings) {
+    void triggerKeyDown(PhysicalKey key, const CatSettings& settings,
+                        SkinTypingStyle typingStyle = SkinTypingStyle::Standard,
+                        const InputEngine* engine = nullptr) {
+        (void)engine;
         double now = nowSeconds();
         PhysicalKey vk = visualKeyOf(key);
         keyGlow[vk] = 1.0f;
@@ -298,10 +343,68 @@ public:
             rightPaw.y.velocity -= 180.0f;
         }
 
-        bodySquash.velocity -= 1.3f;
-        earTwitch.velocity += (prefersViewerLeftPaw(key) ? -3.8f : 3.8f);
-        headTilt.velocity += (prefersViewerLeftPaw(key) ? -1.4f : 1.4f);
-        pupilScale.target = 1.16f;
+        if (typingStyle == SkinTypingStyle::Douni) {
+            Pt keyPt = KeyboardLayout::v2KeyCellCenter(vk);
+            bool useLeft = prefersViewerLeftPaw(vk);
+            douniSlapSide = useLeft ? 0 : 1;
+            douniSlapTimer = 0.28f;
+            douniMouseBlend.target = 0.0f;
+            if (douniMouseBlend.value > 0.05f) {
+                douniMouseBlend.velocity = std::min(douniMouseBlend.velocity, -14.0f);
+            }
+            douniLoafBlend.target = 0.0f;
+            float angerBoost = 1.0f + std::clamp(angerIntensity.value, 0.0f, 1.0f) * 0.35f;
+            if (useLeft) {
+                bool chordOther = (now - douniLastRightKeyTime) < 0.035;
+                douniLastLeftKeyTime = now;
+                douniLeftKeyTarget.setTarget(keyPt);
+                // Independent signed spring (-1 = slam on keycap, +1 = flung high):
+                // On rapid same-side repeat, visibly pop up (+0.50) then whip down so EVERY keystroke re-slaps cleanly!
+                if (douniLeftRaise.value < -0.15f) {
+                    douniLeftRaise.value = 0.50f;
+                    douniLeftRaise.velocity = -15.5f * angerBoost;
+                } else {
+                    douniLeftRaise.velocity = -22.0f * angerBoost;
+                }
+                douniLeftRaise.target = -1.0f;
+                if (!chordOther) {
+                    douniRightRaise.target = 1.02f;
+                    douniRightRaise.velocity = std::max(douniRightRaise.velocity + 6.0f, 17.0f * angerBoost);
+                }
+                leftPaw.y.velocity += 220.0f;
+            } else {
+                bool chordOther = (now - douniLastLeftKeyTime) < 0.035;
+                douniLastRightKeyTime = now;
+                douniRightKeyTarget.setTarget(keyPt);
+                if (douniRightRaise.value < -0.15f) {
+                    douniRightRaise.value = 0.50f;
+                    douniRightRaise.velocity = -15.5f * angerBoost;
+                } else {
+                    douniRightRaise.velocity = -22.0f * angerBoost;
+                }
+                douniRightRaise.target = -1.0f;
+                if (!chordOther) {
+                    douniLeftRaise.target = 1.02f;
+                    douniLeftRaise.velocity = std::max(douniLeftRaise.velocity + 6.0f, 17.0f * angerBoost);
+                }
+                rightPaw.y.velocity += 220.0f;
+            }
+            // Disney Squash & Stretch + Impact Recoil + Secondary Action on keyboard, cord & ears!
+            kbImpactY.velocity += 24.0f * angerBoost;
+            kbImpactTilt.velocity += (useLeft ? -10.5f : 10.5f) * angerBoost;
+            kbSparkTimer = 0.14f;
+            kbSparkKey = vk;
+            bodySquash.velocity -= 2.2f;
+            headOffsetY.velocity += 44.0f;
+            earTwitch.velocity += (useLeft ? -6.5f : 6.5f);
+            headTilt.velocity += (useLeft ? -2.8f : 2.8f);
+            pupilScale.target = 1.24f;
+        } else {
+            bodySquash.velocity -= 1.3f;
+            earTwitch.velocity += (prefersViewerLeftPaw(key) ? -3.8f : 3.8f);
+            headTilt.velocity += (prefersViewerLeftPaw(key) ? -1.4f : 1.4f);
+            pupilScale.target = 1.16f;
+        }
         sleepiness = 0.0f;
 
         if (settings.showKeyBadges) {
@@ -309,10 +412,18 @@ public:
         }
     }
 
-    void triggerMouseClick(int button, bool isDown, const CatSettings& settings) {
+    void triggerMouseClick(int button, bool isDown, const CatSettings& settings,
+                           SkinRenderStyle renderStyle = SkinRenderStyle::Standard) {
         sleepiness = 0.0f;
         if (isDown) {
             double now = nowSeconds();
+            if (renderStyle == SkinRenderStyle::Douni) {
+                douniSlapTimer = 0.0f;
+                douniLeftRaise.target = 0.0f;
+                douniRightRaise.target = 0.0f;
+                douniLoafBlend.target = 0.0f;
+                douniMouseBlend.target = 1.0f;
+            }
             if (button == 0) {
                 mousePressLeft.target = 1.0f;
                 leftPaw.y.velocity += 130.0f;
@@ -335,16 +446,32 @@ public:
         }
     }
 
-    void setDragging(bool dragging, float dragDx = 0.0f) {
+    void setDragging(bool dragging, float dragDx = 0.0f, float dragDy = 0.0f) {
+        bool wasDragging = isScruffDragging_;
         isScruffDragging_ = dragging;
         if (dragging) {
-            scruffDragDx_ = dragDx;
+            if (!wasDragging) {
+                scruffHoldTime = 0.0f;
+                scruffDropTimer = 0.0f;
+                scruffDragAccumX_ = 0.0f;
+                scruffDragAccumY_ = 0.0f;
+            }
+            scruffDragAccumX_ += dragDx;
+            scruffDragAccumY_ += dragDy;
             sleepiness = 0.0f;
             dizzyTimer_ = 0.0f;
             fastMouseDuration_ = 0.0f;
         } else {
             scruffDragDx_ = 0.0f;
-            bodySquash.velocity -= 1.8f;
+            scruffDragDy_ = 0.0f;
+            scruffDragAccumX_ = 0.0f;
+            scruffDragAccumY_ = 0.0f;
+            if (wasDragging) {
+                scruffDropTimer = 0.16f;
+            }
+            // Cute soft squash bounce when set back down (Video 1 drop settle!)
+            bodySquash.velocity -= 2.4f;
+            headOffsetY.velocity += 78.0f;
         }
     }
 
@@ -428,7 +555,9 @@ public:
         headOffsetY.velocity += 18.0f;
     }
 
-    void step(float rawDt, float winX, float winY, float winW, const InputEngine& engine, const CatSettings& settings) {
+    void step(float rawDt, float winX, float winY, float winW, const InputEngine& engine, const CatSettings& settings,
+              SkinTypingStyle typingStyle = SkinTypingStyle::Standard,
+              SkinRenderStyle renderStyle = SkinRenderStyle::Standard) {
         float dt = std::min(rawDt, 1.0f / 25.0f);
         time += dt;
 
@@ -536,11 +665,30 @@ public:
         dizzyIntensity.step(dt, 75.0f, 14.0f);
         float dizzy = std::clamp(dizzyIntensity.value, 0.0f, 1.0f);
 
+        if (isScruffDragging_) {
+            scruffHoldTime += dt;
+            scruffDropTimer = 0.0f;
+            float frameScale = (1.0f / 60.0f) / std::max(dt, 1.0f / 120.0f);
+            float instDx = scruffDragAccumX_ * frameScale;
+            float instDy = scruffDragAccumY_ * frameScale;
+            scruffDragAccumX_ = 0.0f;
+            scruffDragAccumY_ = 0.0f;
+            scruffDragDx_ = scruffDragDx_ * 0.52f + instDx * 0.85f;
+            scruffDragDy_ = scruffDragDy_ * 0.52f + instDy * 0.85f;
+        } else {
+            scruffDropTimer = std::max(0.0f, scruffDropTimer - dt);
+            if (scruffDrag.value < 0.02f) scruffHoldTime = 0.0f;
+            scruffDragDx_ *= 0.80f;
+            scruffDragDy_ *= 0.80f;
+        }
         scruffDrag.target = isScruffDragging_ ? 1.0f : 0.0f;
-        scruffSwing.target = isScruffDragging_ ? std::clamp(-scruffDragDx_ * 0.018f, -0.34f, 0.34f) : 0.0f;
-        scruffDragDx_ *= 0.82f;
-        scruffDrag.step(dt, 170.0f, 16.0f);
-        scruffSwing.step(dt, 110.0f, 10.0f);
+        scruffSwing.target = isScruffDragging_ ? 0.92f * std::tanh(scruffDragDx_ / 18.0f) : 0.0f;
+        scruffSwingY.target = isScruffDragging_ ? 0.78f * std::tanh(-scruffDragDy_ / 18.0f) : 0.0f;
+        scruffTailSwing.target = isScruffDragging_ ? 1.22f * std::tanh(scruffDragDx_ / 16.0f) : 0.0f;
+        scruffDrag.step(dt, 190.0f, 17.0f);
+        scruffSwing.step(dt, 92.0f, 7.4f);
+        scruffSwingY.step(dt, 108.0f, 8.4f);
+        scruffTailSwing.step(dt, 58.0f, 5.2f);
         float scruff = std::clamp(scruffDrag.value, 0.0f, 1.0f);
 
         lieIntensity.target = (!isScruffDragging_ && dizzyTimer_ <= 0.0f && sleepiness > 0.65f)
@@ -549,7 +697,7 @@ public:
         float lie = std::clamp(lieIntensity.value, 0.0f, 1.0f);
 
         float kpmVal = (float)engine.currentKPM();
-        angerIntensity.target = (!isScruffDragging_ && dizzyTimer_ <= 0.0f && kpmVal >= 240.0f)
+        angerIntensity.target = (settings.enableAnger && !isScruffDragging_ && dizzyTimer_ <= 0.0f && kpmVal >= 240.0f)
             ? std::min(1.0f, (kpmVal - 240.0f) / 140.0f) : 0.0f;
         angerIntensity.step(dt, 70.0f, 14.0f);
         float anger = std::clamp(angerIntensity.value, 0.0f, 1.0f);
@@ -643,15 +791,81 @@ public:
             if (tabletTrail[i].age >= 0.72f) tabletTrail.erase(tabletTrail.begin() + i);
         }
 
-        if (scruff > 0.25f) {
-            float sway = scruffSwing.value * 28.0f;
-            float kick = std::sin(time * 9.0f) * 3.5f * scruff;
-            leftPaw.setTarget({ SeatAnchor.x - 16.0f + sway, 198.0f + kick });
-            rightPaw.setTarget({ SeatAnchor.x + 16.0f + sway, 200.0f - kick });
-            hindFoot.setTarget({ SeatAnchor.x + 12.0f + sway * 1.2f, 224.0f });
+        bool isDouniTyping = (typingStyle == SkinTypingStyle::Douni);
+        bool isDouniSkin = (renderStyle == SkinRenderStyle::Douni);
+        if (isDouniTyping) {
+            douniSlapTimer = std::max(0.0f, douniSlapTimer - dt);
+            bool leftHeldNow = false;
+            bool rightHeldNow = false;
+            for (PhysicalKey k : activeKeys) {
+                if (prefersViewerLeftPaw(k)) leftHeldNow = true;
+                else rightHeldNow = true;
+            }
+            if (douniSlapTimer <= 0.08f) {
+                if (!leftHeldNow) {
+                    douniLeftRaise.target = 0.0f;
+                } else if (douniLeftRaise.target > 0.2f) {
+                    douniLeftRaise.target = -0.85f;
+                }
+                if (!rightHeldNow) {
+                    douniRightRaise.target = 0.0f;
+                } else if (douniRightRaise.target > 0.2f) {
+                    douniRightRaise.target = -0.85f;
+                }
+            }
+            douniLeftRaise.step(dt, 680.0f, 25.0f);
+            douniRightRaise.step(dt, 680.0f, 25.0f);
+            douniLeftKeyTarget.step(dt, 820.0f, 28.0f);
+            douniRightKeyTarget.step(dt, 820.0f, 28.0f);
+            kbImpactY.target = 0.0f;
+            kbImpactTilt.target = 0.0f;
+            kbImpactY.step(dt, 560.0f, 16.0f);
+            kbImpactTilt.step(dt, 500.0f, 14.0f);
+            kbSparkTimer = std::max(0.0f, kbSparkTimer - dt);
+        } else {
+            douniSlapTimer = 0.0f;
+            douniLeftRaise.target = 0.0f;
+            douniRightRaise.target = 0.0f;
+            kbImpactY.value = 0.0f; kbImpactTilt.value = 0.0f; kbSparkTimer = 0.0f;
+        }
+        if (isDouniSkin) {
+            // Deliberate petting threshold (avoids abrupt hijacking on 1px cursor brush or fast hunting whip!) + silky Disney ease spring
+            bool wantsLoaf = !isScruffDragging_ && scruff < 0.08f && dizzy < 0.15f && hunt < 0.22f
+                && (petHeadIntensity > 0.30f || isCurrentlyPetting_ || petBodyIntensity > 0.35f || sleepiness > 0.48f);
+            douniLoafBlend.target = wantsLoaf ? 1.0f : 0.0f;
+            douniLoafBlend.step(dt, 52.0f, 13.5f);
+            bool typingNow = (douniSlapTimer > 0.04f || !activeKeys.empty());
+            bool tabletUsed = isTabletActive && (engine.leftMouseDown || mouseActivelyUsed);
+            bool wantsMouse = !isScruffDragging_ && !wantsLoaf && !typingNow && (mouseActivelyUsed || tabletUsed);
+            douniMouseBlend.target = wantsMouse ? 1.0f : 0.0f;
+            douniMouseBlend.step(dt, wantsMouse ? 280.0f : 460.0f, wantsMouse ? 22.0f : 28.0f);
+            // Keep tablet ink trail alive for Xiao Douni when drawing on the hand-drawn comic tablet!
+            if (isTabletActive && wantsMouse && engine.leftMouseDown) {
+                Pt nib = tabletNib.point();
+                if (tabletTrail.empty() || std::hypot(nib.x - tabletTrail.back().point.x, nib.y - tabletTrail.back().point.y) >= 1.8f) {
+                    tabletTrail.push_back({ nib, 0.0f });
+                    if (tabletTrail.size() > 28) tabletTrail.erase(tabletTrail.begin());
+                }
+            }
+        } else {
+            douniLoafBlend.value = 0.0f; douniLoafBlend.target = 0.0f;
+            douniMouseBlend.value = 0.0f; douniMouseBlend.target = 0.0f;
+        }
+        bool douniActive = isDouniTyping && (douniSlapTimer > 0.01f || !activeKeys.empty()) && scruff <= 0.25f && dizzy <= 0.35f && lie <= 0.45f;
+
+        if (scruff > 0.24f) {
+            float scruffS = scruff * scruff * (3.0f - 2.0f * scruff);
+            float liftSeatY = SeatAnchor.y - scruffS * 44.0f;
+            float swayL = scruffSwing.value * 24.0f + std::sin(time * 7.6f) * 3.0f;
+            float bobL = std::cos(time * 7.6f) * 2.2f;
+            float swayR = scruffSwing.value * 24.0f + std::sin(time * 7.6f + 2.1f) * 3.0f;
+            float bobR = std::cos(time * 7.6f + 2.1f) * 2.2f;
+            leftPaw.setTarget({ SeatAnchor.x + bodyShiftX.value - 20.0f + swayL, liftSeatY + 24.0f + bobL });
+            rightPaw.setTarget({ SeatAnchor.x + bodyShiftX.value + 16.0f + swayR, liftSeatY + 24.0f + bobR });
+            hindFoot.setTarget(HindFootRest);
             hindFootActive.target = 0.0f;
-            leftPawTyping = false;
-            rightPawTyping = false;
+            leftPawTyping = true;
+            rightPawTyping = true;
             leftPawOnMouse = false;
         } else if (dizzy > 0.35f) {
             leftPaw.setTarget(LeftPawRest);
@@ -669,6 +883,28 @@ public:
             leftPawTyping = false;
             rightPawTyping = false;
             leftPawOnMouse = false;
+        } else if (douniActive) {
+            float sx = SeatAnchor.x + bodyShiftX.value;
+            float lRaise = std::clamp(douniLeftRaise.value, 0.0f, 1.18f);
+            Pt lDown = (leftKey != PhysicalKey::None) ? KeyboardLayout::canvasPointForKey(leftKey) : Pt{ sx - 44.0f, 246.0f };
+            Pt lHigh = { sx - 84.0f, 156.0f }; // High windup beside left cheek (Video 2!)
+            leftPaw.setTarget({ lDown.x + (lHigh.x - lDown.x) * lRaise, lDown.y + (lHigh.y - lDown.y) * lRaise });
+            leftPawTyping = true;
+            leftPawOnMouse = false;
+
+            float rRaise = std::clamp(douniRightRaise.value, 0.0f, 1.18f);
+            Pt rDown = (rightKey != PhysicalKey::None) ? KeyboardLayout::canvasPointForKey(rightKey) : Pt{ sx + 22.0f, 246.0f };
+            Pt rHigh = { sx - 8.0f, 158.0f }; // High windup curled right across the cheek/face (Video 2!)
+            rightPaw.setTarget({ rDown.x + (rHigh.x - rDown.x) * rRaise, rDown.y + (rHigh.y - rDown.y) * rRaise });
+            rightPawTyping = true;
+
+            if (footKey != PhysicalKey::None) {
+                hindFoot.setTarget(KeyboardLayout::canvasPointForKey(footKey));
+                hindFootActive.target = 1.0f;
+            } else {
+                hindFoot.setTarget(HindFootRest);
+                hindFootActive.target = 0.0f;
+            }
         } else {
             if (leftKey != PhysicalKey::None) {
                 leftPaw.setTarget(KeyboardLayout::canvasPointForKey(leftKey));

@@ -34,7 +34,7 @@ private struct RenderedPose {
         hasEffects = settings.keyboardMarquee || !physics.sparkles.isEmpty
             || !physics.floatingKeycaps.isEmpty || !physics.keyGlow.isEmpty
             || physics.angerIntensity.value > 0.02 || physics.dizzyIntensity.value > 0.02
-            || physics.scruffDrag.value > 0.02 || physics.lieIntensity.value > 0.02
+            || physics.scruffDrag.value > 0.02 || physics.isChangingLie
         head = XiaoheiRenderer.headCenter(physics, showPaws: settings.xiaoheiPaws)
         leftPaw = physics.leftPaw.point
         rightPaw = physics.rightPaw.point

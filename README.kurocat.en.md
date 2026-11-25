@@ -1,7 +1,11 @@
 # 🐱 KuroCat — Full-State Keyboard & Mouse Desktop Cat Pet (macOS / Windows / Linux / UOS)
 
 <p align="center">
-  <a href="README.md">简体中文</a> | <b>English</b>
+  <a href="README.md">简体中文</a> | <b>English</b> ·
+  <a href="https://kurocat.cc/en/">🌐 Official Homepage (Play Live in Browser)</a> ·
+  <a href="https://kurocat.cc/obs-guide/">🎥 OBS Overlay Guide</a> ·
+  <a href="https://workshop.kurocat.cc/">🎨 Skin Workshop &amp; Plaza</a> ·
+  <a href="https://github.com/chanke17/KuroCat/releases/latest">⬇️ Download Latest</a>
 </p>
 
 <p align="center">
@@ -74,7 +78,7 @@ open KuroCat.app
 ```
 
 ### 🪟 Windows (Windows 7 SP1 / 8 / 10 / 11 x64)
-1. Download the single-file `KuroCat-Windows-x64.exe` (~220 KB, **zero external runtime dependencies**). Double-click to run; lives in the system tray.
+1. Download the single-file `KuroCat-Windows-x64.exe` (~802 KB, **zero external runtime dependencies**, no Electron/WebView bloat). Double-click to run; lives in the system tray.
 2. Right-click the cat or click the tray icon to switch skins, keyboard themes, scale, **Launch at Login**, or **Full Click-Through**.
 3. **4 ways to exit or open the menu while Full Click-Through is active**:
    - Global shortcut: **`Ctrl + Alt + Shift + P`** to toggle click-through;
@@ -120,6 +124,17 @@ Supports **Ubuntu 20.04+ / Debian 11+ / Deepin / UOS (x86_64 & ARM64) / Kylin / 
    ./build.sh        # Compile binary
    ./build_deb.sh    # Package .deb installer
    ```
+
+---
+
+## 🌐 Official Ecosystem
+
+- **Official Website (English)**: https://kurocat.cc/en/ (try the interactive 2.5D web cat pet live in browser)
+- **Official Website (Chinese)**: https://kurocat.cc/
+- **OBS Streaming & Setup Guide**: https://kurocat.cc/obs-guide/ (OBS transparent capture, `#00FF00` green screen, gaming click-through, OS permissions)
+- **Skin Workshop & Community Plaza**: https://workshop.kurocat.cc/ (browser-based 2.5D coat editor + free Xiao Douni, Monster Hunter Palico, Tabby `.kurocat` skins & `.kurokb` mechanical keyboards)
+- **KuroCat MCP Server (`kurocat-mcp`)**: [mcp/README.md](mcp/README.md) (zero-dependency Model Context Protocol server for Claude Desktop, Cursor, LobeChat & Antigravity to generate `.kurocat` skins, design `.kurokb` mechanical keyboards, and install skins directly from the Community Plaza)
+- **AI / LLM Technical Reference**: https://kurocat.cc/llms.txt · https://kurocat.cc/llms-full.txt
 
 ---
 

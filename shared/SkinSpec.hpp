@@ -28,6 +28,8 @@ enum class SkinSpace : int { Head = 0, Skull, Body, Tail, LeftEar, RightEar };
 enum class SkinBuild : int { Standard = 0, Sleek };
 enum class SkinHeadSurface : int { Dome = 0, Plane };
 enum class SkinAnchorPoint : int { HeadTop = 0, Face, Neck, TailTip };
+enum class SkinRenderStyle : int { Standard = 0, Douni, Dazed };
+enum class SkinTypingStyle : int { Standard = 0, Douni };
 
 struct SkinPoint { float x = 0, y = 0; };
 // One pen-tool anchor; in/out are absolute handle positions in the same part space.
@@ -52,8 +54,8 @@ struct SkinMark {
 
 struct SkinShape {
     SkinBuild build = SkinBuild::Standard;
-    float bodyWidth = 1, headScale = 1, earSize = 1, earPointiness = 1;
-    float tailLength = 1, tailThickness = 1, cheekFullness = 1, pawStagger = 1;
+    float bodyWidth = 1, headScale = 1, earSize = 1, earBaseWidth = 1, earPointiness = 1;
+    float tailLength = 1, tailThickness = 1, cheekFullness = 1, neckWidth = 1, pawStagger = 1;
 };
 
 struct SkinDecoration {
@@ -78,6 +80,8 @@ struct SkinSpec {
     std::vector<SkinMark> marks;
     SkinShape shape;
     SkinHeadSurface headSurface = SkinHeadSurface::Dome;
+    SkinRenderStyle renderStyle = SkinRenderStyle::Standard;
+    SkinTypingStyle typingStyle = SkinTypingStyle::Standard;
     // "idleLegs": "legs" (default) tints the sitting front legs with palette.legs, fading in from the
     // shoulder; "chest" leaves them chest-coloured (only paws + creases), as the built-in coats are drawn.
     bool idleLegsTinted = true;
@@ -474,10 +478,12 @@ inline bool SkinSpec::parse(const std::string& bytes, SkinSpec& out, std::string
         if (!number(c, sh->get("bodyWidth"), "shape.bodyWidth", 0.85, 1.35, h.bodyWidth) ||
             !number(c, sh->get("headScale"), "shape.headScale", 0.90, 1.15, h.headScale) ||
             !number(c, sh->get("earSize"), "shape.earSize", 0.80, 1.25, h.earSize) ||
+            !number(c, sh->get("earBaseWidth"), "shape.earBaseWidth", 0.65, 1.40, h.earBaseWidth) ||
             !number(c, sh->get("earPointiness"), "shape.earPointiness", 0.50, 1.50, h.earPointiness) ||
             !number(c, sh->get("tailLength"), "shape.tailLength", 0.70, 1.30, h.tailLength) ||
             !number(c, sh->get("tailThickness"), "shape.tailThickness", 0.70, 1.50, h.tailThickness) ||
             !number(c, sh->get("cheekFullness"), "shape.cheekFullness", 0.85, 1.25, h.cheekFullness) ||
+            !number(c, sh->get("neckWidth"), "shape.neckWidth", 0.65, 1.40, h.neckWidth) ||
             !number(c, sh->get("pawStagger"), "shape.pawStagger", 0.0, 1.0, h.pawStagger)) { error = c.error; return false; }
     }
     if (const Value* hs = root.get("headSurface")) {
@@ -488,6 +494,13 @@ inline bool SkinSpec::parse(const std::string& bytes, SkinSpec& out, std::string
     if (const Value* il = root.get("idleLegs")) {
         if (il->type != Value::JString || (il->s != "legs" && il->s != "chest")) { error = "idleLegs 必须是 \"legs\" 或 \"chest\""; return false; }
         s.idleLegsTinted = il->s == "legs";
+    }
+    if (const Value* rs = root.get("renderStyle"); rs && rs->type == Value::JString) {
+        if (rs->s == "douni") s.renderStyle = SkinRenderStyle::Douni;
+        else if (rs->s == "dazed") s.renderStyle = SkinRenderStyle::Dazed;
+    }
+    if (const Value* ts = root.get("typingStyle"); ts && ts->type == Value::JString) {
+        if (ts->s == "douni") s.typingStyle = SkinTypingStyle::Douni;
     }
 
     // Regions (pen-tool curve areas)

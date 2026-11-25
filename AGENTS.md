@@ -13,7 +13,7 @@ open XiaoheiPet.app
 
 ## CI 与发布
 
-GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS 应用，并上传 Universal ZIP 和状态预览图。PR 构建使用 ad-hoc 签名。推送和手动构建从组织级 Actions Secrets 读取 `CSC_LINK` 与 `CSC_KEY_PASSWORD`。`v*` 标签构建要求稳定签名，成功后将 ZIP 附到对应的 GitHub Release。
+GitHub Actions 在 PR、推送到 `main`、推送 `v*` 标签或手动触发时构建 macOS 应用，并上传 Universal ZIP 和状态预览图。PR 构建使用 ad-hoc 签名。`main` 和 `v*` 标签上的非 PR 构建使用 `import-ai` 组织级 Actions Secrets `CSC_LINK` 与 `CSC_KEY_PASSWORD`。在 Actions 设置里为仓库授权后，构建会从导入的证书中选取 Developer ID Application 签名身份。`v*` 标签构建要求稳定签名，成功后将 ZIP 附到对应的 GitHub Release。
 
 ## 生成角色素材
 

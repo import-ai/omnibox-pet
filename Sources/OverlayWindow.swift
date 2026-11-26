@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ApplicationServices
 
 private struct RenderedPose {
     struct Appearance: Equatable {
@@ -294,20 +295,27 @@ final class CatCanvasView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let win = window else { return }
+        guard let win = window as? OverlayWindow else { return }
         if activeResizeCorner >= 0 {
             activeResizeCorner = -1
-            UserDefaults.standard.set(Double(win.frame.origin.x), forKey: "KuroCat.PosX")
-            UserDefaults.standard.set(Double(win.frame.origin.y), forKey: "KuroCat.PosY")
+            win.saveDisplayPosition()
             return
         }
         guard isDragging else { return }
         isDragging = false
         physics.setDragging(false)
         NSCursor.openHand.set()
-        // Save position
-        UserDefaults.standard.set(Double(win.frame.origin.x), forKey: "KuroCat.PosX")
-        UserDefaults.standard.set(Double(win.frame.origin.y), forKey: "KuroCat.PosY")
+        if win.frame.origin != dragStartWindowOrigin {
+            win.saveDisplayPosition(preferDisplay: true)
+        }
+    }
+
+    func cancelPositionAdjustment() {
+        guard isDraggingOrResizing else { return }
+        activeResizeCorner = -1
+        isDragging = false
+        physics.setDragging(false)
+        NSCursor.arrow.set()
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -325,7 +333,8 @@ final class OverlayWindow: NSPanel {
             width: CatPhysics.canvasSize.width * scale,
             height: CatPhysics.canvasSize.height * scale
         )
-        let origin = OverlayWindow.initialOrigin(for: size)
+        let origin = PetPlacement.restoredOrigin(size: size, displays: PetPlacement.connectedDisplays)
+            ?? PetPlacement.defaultOrigin(size: size, within: CGRect(x: 0, y: 0, width: 1440, height: 900))
 
         super.init(
             contentRect: CGRect(origin: origin, size: size),
@@ -399,37 +408,100 @@ final class OverlayWindow: NSPanel {
             y: oldFrame.minY
         )
         setFrame(CGRect(origin: newOrigin, size: newSize), display: true)
-        UserDefaults.standard.set(Double(newOrigin.x), forKey: "KuroCat.PosX")
-        UserDefaults.standard.set(Double(newOrigin.y), forKey: "KuroCat.PosY")
+        saveDisplayPosition()
     }
 
     func resetPosition() {
-        let origin = OverlayWindow.defaultOrigin(for: frame.size)
+        guard let display = PetPlacement.fallbackDisplay(in: PetPlacement.connectedDisplays) else { return }
+        setFrameOrigin(PetPlacement.defaultOrigin(size: frame.size, within: display.visibleFrame))
+        saveDisplayPosition(preferDisplay: true)
+    }
+
+    func saveDisplayPosition(preferDisplay: Bool = false) {
+        PetPlacement.save(frame: frame, displays: PetPlacement.connectedDisplays, preferDisplay: preferDisplay)
+    }
+
+    func restoreDisplayPosition() {
+        guard let origin = PetPlacement.restoredOrigin(size: frame.size, displays: PetPlacement.connectedDisplays),
+              origin != frame.origin else { return }
+        catView.cancelPositionAdjustment()
         setFrameOrigin(origin)
-        UserDefaults.standard.set(Double(origin.x), forKey: "KuroCat.PosX")
-        UserDefaults.standard.set(Double(origin.y), forKey: "KuroCat.PosY")
+    }
+}
+
+enum PetPlacement {
+    struct Display {
+        let id: String?
+        let frame: CGRect
+        let visibleFrame: CGRect
+        let isBuiltIn: Bool
     }
 
-    private static func initialOrigin(for size: CGSize) -> CGPoint {
-        let d = UserDefaults.standard
-        if d.object(forKey: "KuroCat.PosX") != nil && d.object(forKey: "KuroCat.PosY") != nil {
-            let x = CGFloat(d.double(forKey: "KuroCat.PosX"))
-            let y = CGFloat(d.double(forKey: "KuroCat.PosY"))
-            let saved = CGPoint(x: x, y: y)
-            // Ensure saved origin is still on a connected display
-            let rect = CGRect(origin: saved, size: size)
-            if NSScreen.screens.contains(where: { $0.frame.intersects(rect) }) {
-                return saved
-            }
+    private static let positionsKey = "KuroCat.DisplayPositions"
+    private static let preferredKey = "KuroCat.PreferredDisplay"
+
+    static var connectedDisplays: [Display] {
+        NSScreen.screens.map { screen in
+            let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            let id = screenNumber?.uint32Value
+            let uuid = id.flatMap { CGDisplayCreateUUIDFromDisplayID($0)?.takeRetainedValue() }
+            return Display(id: uuid.map { CFUUIDCreateString(nil, $0) as String },
+                           frame: screen.frame, visibleFrame: screen.visibleFrame,
+                           isBuiltIn: id.map { CGDisplayIsBuiltin($0) != 0 } ?? false)
         }
-        return defaultOrigin(for: size)
     }
 
-    private static func defaultOrigin(for size: CGSize) -> CGPoint {
-        let screen = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-        return CGPoint(
-            x: screen.maxX - size.width - 28,
-            y: screen.minY + 18
-        )
+    static func fallbackDisplay(in displays: [Display]) -> Display? {
+        displays.first(where: { $0.isBuiltIn }) ?? displays.first
+    }
+
+    static func save(frame: CGRect, displays: [Display], preferDisplay: Bool, defaults: UserDefaults = .standard) {
+        guard let display = displayContaining(frame, in: displays), let id = display.id else { return }
+        let bounds = display.visibleFrame
+        var positions = defaults.dictionary(forKey: positionsKey) ?? [:]
+        positions[id] = [
+            fraction(frame.minX - bounds.minX, travel: bounds.width - frame.width),
+            fraction(frame.minY - bounds.minY, travel: bounds.height - frame.height)
+        ]
+        defaults.set(positions, forKey: positionsKey)
+        if preferDisplay { defaults.set(id, forKey: preferredKey) }
+    }
+
+    static func restoredOrigin(size: CGSize, displays: [Display], defaults: UserDefaults = .standard) -> CGPoint? {
+        guard let fallback = fallbackDisplay(in: displays) else { return nil }
+        if defaults.string(forKey: preferredKey) == nil,
+           let x = defaults.object(forKey: "KuroCat.PosX") as? NSNumber,
+           let y = defaults.object(forKey: "KuroCat.PosY") as? NSNumber,
+           x.doubleValue.isFinite, y.doubleValue.isFinite {
+            let oldFrame = CGRect(origin: CGPoint(x: x.doubleValue, y: y.doubleValue), size: size)
+            save(frame: oldFrame, displays: displays, preferDisplay: true, defaults: defaults)
+        }
+        let preferredID = defaults.string(forKey: preferredKey)
+        let display = displays.first { preferredID != nil && $0.id == preferredID } ?? fallback
+        let bounds = display.visibleFrame
+        guard let id = display.id,
+              let position = defaults.dictionary(forKey: positionsKey)?[id] as? [Double],
+              position.count == 2, position.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else {
+            return defaultOrigin(size: size, within: bounds)
+        }
+        return CGPoint(x: bounds.minX + max(0, bounds.width - size.width) * position[0],
+                       y: bounds.minY + max(0, bounds.height - size.height) * position[1])
+    }
+
+    static func defaultOrigin(size: CGSize, within bounds: CGRect) -> CGPoint {
+        CGPoint(x: bounds.minX + max(0, bounds.width - size.width - 28),
+                y: bounds.minY + min(18, max(0, bounds.height - size.height)))
+    }
+
+    private static func displayContaining(_ frame: CGRect, in displays: [Display]) -> Display? {
+        displays.filter { !$0.frame.intersection(frame).isEmpty }.max { first, second in
+            let a = first.frame.intersection(frame)
+            let b = second.frame.intersection(frame)
+            return a.width * a.height < b.width * b.height
+        }
+    }
+
+    private static func fraction(_ offset: CGFloat, travel: CGFloat) -> Double {
+        travel > 0 ? Double(max(0, min(1, offset / travel))) : 0
     }
 }

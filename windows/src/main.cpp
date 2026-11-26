@@ -35,6 +35,7 @@ using std::max;
 #include "InputEngine.hpp"
 #include "CatPhysics.hpp"
 #include "CatRenderer.hpp"
+#include "DisplayPlacement.hpp"
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -468,44 +469,24 @@ HICON createCatTrayIcon() {
                                         GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0));
 }
 
-void computeDefaultOrigin(int w, int h, int& outX, int& outY) {
-    RECT work = {};
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    outX = work.right - w - 24;
-    outY = work.bottom - h - 12;
-}
-
 void applyWindowScaleAndPosition(AppState& app, bool anchorBottomCenter, bool persist = true) {
-    int newW = (int)std::round(CatPhysics::CanvasWidth * app.settings.scale);
-    int newH = (int)std::round(CatPhysics::CanvasHeight * app.settings.scale);
-
-    int x = app.settings.posX;
-    int y = app.settings.posY;
-    if (anchorBottomCenter && app.hwnd) {
-        RECT r = {};
-        GetWindowRect(app.hwnd, &r);
-        int oldMidX = (r.left + r.right) / 2;
-        int oldBotY = r.bottom;
-        x = oldMidX - newW / 2;
-        y = oldBotY - newH;
-    } else if (x == -99999 || y == -99999) {
-        computeDefaultOrigin(newW, newH, x, y);
-    }
-
-    // Clamp onto virtual desktop so saved off-monitor coords never get lost
-    int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-    if (x + newW < vx + 40 || x > vx + vw - 40 || y + newH < vy + 40 || y > vy + vh - 40) {
-        computeDefaultOrigin(newW, newH, x, y);
+    const SIZE size{static_cast<LONG>(std::round(CatPhysics::CanvasWidth * app.settings.scale)),
+                    static_cast<LONG>(std::round(CatPhysics::CanvasHeight * app.settings.scale))};
+    const auto monitors = DisplayPlacement::connectedMonitors();
+    POINT origin{};
+    RECT frame{};
+    if (anchorBottomCenter && GetWindowRect(app.hwnd, &frame)) {
+        origin = {(frame.left + frame.right - size.cx) / 2, frame.bottom - size.cy};
+    } else {
+        origin = DisplayPlacement::restore(size, {app.settings.posX, app.settings.posY}, monitors);
     }
 
     HWND insertAfter = app.settings.alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST;
-    SetWindowPos(app.hwnd, insertAfter, x, y, newW, newH, SWP_NOACTIVATE);
+    SetWindowPos(app.hwnd, insertAfter, origin.x, origin.y, size.cx, size.cy, SWP_NOACTIVATE);
     if (persist) {
-        app.settings.posX = x;
-        app.settings.posY = y;
+        if (anchorBottomCenter && GetWindowRect(app.hwnd, &frame)) {
+            DisplayPlacement::remember(frame, monitors, false);
+        }
         app.settings.saveToRegistry();
     }
 }
@@ -537,7 +518,12 @@ void recoverAfterSystemEvent(AppState& app) {
     app.input.lastMouseMoveTime = now; // wake the cat up so it visibly greets the user again
     app.destroyBuffer();
     app.ulwFailures = 0;
-    app.isDragging = false;
+    if (app.isDragging || app.activeResizeCorner >= 0) {
+        app.isDragging = false;
+        app.activeResizeCorner = -1;
+        app.physics.setDragging(false);
+        if (GetCapture() == app.hwnd) ReleaseCapture();
+    }
     app.lastTickTime = now;
     app.nextFrameTime = 0.0;
     app.lastRenderTime = now;
@@ -897,11 +883,18 @@ void showContextMenu(AppState& app, POINT screenPt) {
             app.demoStartTime = nowSeconds();
             app.demoStepIdx = 0;
             break;
-        case CMD_RESET_POS:
-            app.settings.posX = -99999;
-            app.settings.posY = -99999;
-            applyWindowScaleAndPosition(app, false);
+        case CMD_RESET_POS: {
+            const auto monitors = DisplayPlacement::connectedMonitors();
+            const auto* monitor = DisplayPlacement::fallbackMonitor(monitors);
+            RECT frame{};
+            if (monitor && GetWindowRect(app.hwnd, &frame)) {
+                const SIZE size{frame.right - frame.left, frame.bottom - frame.top};
+                const POINT origin = DisplayPlacement::originInWorkArea(monitor->work, size);
+                SetWindowPos(app.hwnd, nullptr, origin.x, origin.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                if (GetWindowRect(app.hwnd, &frame)) DisplayPlacement::remember(frame, monitors, true);
+            }
             break;
+        }
         case CMD_RELAUNCH_ADMIN:
             // The elevated copy starts with --takeover and waits for this one to exit.
             if (relaunchSelfElevated(L"--takeover --no-elevate")) quitApp(app);
@@ -1109,6 +1102,12 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (app && hwnd == app->hwnd) recoverAfterSystemEvent(*app);
             return 0;
 
+        case WM_SETTINGCHANGE:
+            if (app && hwnd == app->hwnd && wParam == SPI_SETWORKAREA) {
+                applyWindowScaleAndPosition(*app, false, false);
+            }
+            break;
+
         case WM_REQUEST_QUIT:
             if (app) quitApp(*app);
             return 0;
@@ -1205,9 +1204,9 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 app->activeResizeCorner = -1;
                 ReleaseCapture();
                 RECT wr = {};
-                GetWindowRect(hwnd, &wr);
-                app->settings.posX = wr.left;
-                app->settings.posY = wr.top;
+                if (GetWindowRect(hwnd, &wr)) {
+                    DisplayPlacement::remember(wr, DisplayPlacement::connectedMonitors(), false);
+                }
                 app->settings.saveToRegistry();
                 return 0;
             }
@@ -1216,10 +1215,10 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 app->physics.setDragging(false);
                 ReleaseCapture();
                 RECT wr = {};
-                GetWindowRect(hwnd, &wr);
-                app->settings.posX = wr.left;
-                app->settings.posY = wr.top;
-                app->settings.saveToRegistry();
+                if (GetWindowRect(hwnd, &wr)
+                    && (wr.left != app->dragStartWinOrigin.x || wr.top != app->dragStartWinOrigin.y)) {
+                    DisplayPlacement::remember(wr, DisplayPlacement::connectedMonitors(), true);
+                }
             }
             return 0;
 
@@ -1467,12 +1466,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
 
     int initW = (int)std::round(CatPhysics::CanvasWidth * app.settings.scale);
     int initH = (int)std::round(CatPhysics::CanvasHeight * app.settings.scale);
-    int initX = 0, initY = 0;
-    if (app.settings.posX != -99999 && app.settings.posY != -99999) {
-        initX = app.settings.posX; initY = app.settings.posY;
-    } else {
-        computeDefaultOrigin(initW, initH, initX, initY);
-    }
+    const POINT initialOrigin = DisplayPlacement::restore({initW, initH}, {app.settings.posX, app.settings.posY},
+                                                            DisplayPlacement::connectedMonitors());
 
     DWORD exStyle = WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT
                   | (app.settings.obsCaptureMode == 0 ? WS_EX_TOOLWINDOW : 0)
@@ -1483,7 +1478,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
         wc.lpszClassName,
         L"XiaoheiPet",
         WS_POPUP,
-        initX, initY, initW, initH,
+        initialOrigin.x, initialOrigin.y, initW, initH,
         nullptr, nullptr, hInst, nullptr
     );
     if (!app.hwnd) {

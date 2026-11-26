@@ -84,6 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    func applicationDidChangeScreenParameters(_ notification: Notification) {
+        overlayWindow?.restoreDisplayPosition()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         // Quitting during launch because a newer copy is running: leave its stats alone.
         if isHandingOverToNewerCopy { return }
